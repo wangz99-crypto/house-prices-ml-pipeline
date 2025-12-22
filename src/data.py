@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Tuple
 
 import pandas as pd
+from .config import default_paths
 
 
 @dataclass(frozen=True)
@@ -81,3 +82,17 @@ def handle_missing_values(df: pd.DataFrame) -> pd.DataFrame:
             df[c] = df[c].fillna(df[c].mode(dropna=True)[0])
 
     return df
+
+TARGET = "SalePrice"
+ID_COL = "Id"
+
+def load_train_test():
+    paths = default_paths()
+    train_df = pd.read_csv(paths.data_raw / "train.csv")
+    test_df  = pd.read_csv(paths.data_raw / "test.csv")
+    return train_df, test_df
+
+def split_xy(train_df: pd.DataFrame):
+    X = train_df.drop(columns=[TARGET])
+    y = train_df[TARGET]
+    return X, y
