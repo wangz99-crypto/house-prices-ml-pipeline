@@ -1,45 +1,78 @@
+# src/predict.py
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
 
-import joblib
 import numpy as np
 import pandas as pd
 
-from .data import handle_missing_values
-from .features import create_features
+from .data import load_train_test, ID_COL
+from .ensemble import blend_mean, blend_weighted, stacking_ridge
 
+TARGET = "SalePrice"
 
-def main() -> None:
+def load_saved_preds(reports_dir: Path, model_names: list[str]):
+    oofs, tests, rmses = [], [], []
+    # read CV rmses from metrics.csv if present (for weighted blend)
+    metrics_csv = reports_dir / "metrics.csv"
+    if metrics_csv.exists():
+        m = pd.read_csv(metrics_csv).set_index("model")
+        rmses = [float(m.loc[name, "cv_rmse_log"]) for name in model_names]
+    else:
+        rmses = [1.0] * len(model_names)
+
+    for name in model_names:
+        oofs.append(np.load(reports_dir / f"oof_{name}.npy"))
+        tests.append(np.load(reports_dir / f"testpred_{name}.npy"))
+    return oofs, tests, rmses
+
+def save_submission(test_ids: pd.Series, pred_log: np.ndarray, out_path: Path):
+    pred = np.expm1(pred_log)  # back-transform
+    sub = pd.DataFrame({ID_COL: test_ids, TARGET: pred})
+    sub.to_csv(out_path, index=False)
+    print(f"Saved: {out_path}")
+
+def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model-path", type=str, required=True, help="Path to saved model.joblib")
-    parser.add_argument("--test-path", type=str, required=True, help="Path to Kaggle test.csv")
-    parser.add_argument("--out-path", type=str, default="reports/submission.csv", help="Where to write submission CSV")
-    parser.add_argument("--id-col", type=str, default="Id")
+    parser.add_argument("--model", type=str, default=None, help="Single model name: lgbm/xgb/ridge/extratrees")
+    parser.add_argument("--ensemble", type=str, default=None, choices=[None, "blend_mean", "blend_weighted", "stack"])
     args = parser.parse_args()
 
-    model_path = Path(args.model_path)
-    out_path = Path(args.out_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    project_root = Path(__file__).resolve().parents[1]
+    reports_dir = project_root / "reports"
 
-    model = joblib.load(model_path)
+    train_df, test_df = load_train_test()
+    test_ids = test_df[ID_COL].copy()
 
-    test = pd.read_csv(args.test_path)
-    test = handle_missing_values(test)
-    test = create_features(test)
+    model_names = ["lgbm", "xgb", "ridge", "extratrees"]
 
-    ids = test[args.id_col].copy() if args.id_col in test.columns else pd.Series(np.arange(len(test)))
-    X_test = test.drop(columns=["SalePrice"], errors="ignore")
+    if args.model:
+        if args.model not in model_names:
+            raise ValueError(f"Unknown model: {args.model}. Choose from {model_names}")
+        _, tests, _ = load_saved_preds(reports_dir, [args.model])
+        pred_log = tests[0]
+        save_submission(test_ids, pred_log, project_root / f"submission_{args.model}.csv")
+        return
 
-    pred_log = model.predict(X_test)
-    pred = np.expm1(pred_log)  # invert log1p
+    if args.ensemble is None:
+        raise ValueError("Please provide either --model <name> or --ensemble <blend_mean|blend_weighted|stack>")
 
-    submission = pd.DataFrame({args.id_col: ids, "SalePrice": pred})
-    submission.to_csv(out_path, index=False)
+    oofs, tests, rmses = load_saved_preds(reports_dir, model_names)
 
-    print(f"Saved submission -> {out_path}")
+    if args.ensemble == "blend_mean":
+        pred_log = blend_mean(tests)
+        save_submission(test_ids, pred_log, project_root / "submission_blend_mean.csv")
 
+    elif args.ensemble == "blend_weighted":
+        pred_log = blend_weighted(tests, rmses)
+        save_submission(test_ids, pred_log, project_root / "submission_blend_weighted.csv")
+
+    elif args.ensemble == "stack":
+        # meta model trains on OOF predictions, target is log1p(SalePrice)
+        y_log = np.log1p(train_df[TARGET].values.astype(float))
+        pred_log = stacking_ridge(oofs, y_log, tests, seed=42)
+        save_submission(test_ids, pred_log, project_root / "submission_stacking.csv")
 
 if __name__ == "__main__":
     main()
