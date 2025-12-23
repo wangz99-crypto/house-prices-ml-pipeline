@@ -16,7 +16,7 @@ def make_extratrees(seed: int = 42):
         n_estimators=2000,
         random_state=seed,
         n_jobs=-1,
-        max_features="auto",
+        max_features="sqrt",   # FIX: sklearn no longer accepts "auto"
         min_samples_leaf=1,
         min_samples_split=2,
     )
