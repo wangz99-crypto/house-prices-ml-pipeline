@@ -1,3 +1,4 @@
+from .data import handle_missing_values
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -22,6 +23,8 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     - Log1p versions of highly skewed numeric features (added, not replaced)
     """
     df = df.copy()
+    # ensure missing is handled before feature ops
+    df = handle_missing_values(df)
 
     # Basic composites
     if set(["TotalBsmtSF", "1stFlrSF", "2ndFlrSF"]).issubset(df.columns):

@@ -2,10 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Tuple
 
 import pandas as pd
+
 from .config import default_paths
+
+
+# Public constants expected by train.py / predict.py
+ID_COL = "Id"
+TARGET_COL = "SalePrice"
 
 
 @dataclass(frozen=True)
@@ -14,8 +19,8 @@ class Dataset:
     test: pd.DataFrame
 
 
-def load_train_test(data_dir: str | Path) -> Dataset:
-    """Load Kaggle House Prices train/test CSVs."""
+def load_dataset(data_dir: str | Path) -> Dataset:
+    """Load Kaggle House Prices train/test CSVs from a directory."""
     data_dir = Path(data_dir)
     train_path = data_dir / "train.csv"
     test_path = data_dir / "test.csv"
@@ -28,6 +33,29 @@ def load_train_test(data_dir: str | Path) -> Dataset:
     train = pd.read_csv(train_path)
     test = pd.read_csv(test_path)
     return Dataset(train=train, test=test)
+
+
+def load_train_test(data_dir: str | Path | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Convenience loader used by CLI pipeline.
+
+    - If data_dir is None, load from config.default_paths().data_raw
+    - Returns (train_df, test_df) so callers can do: train_df, test_df = load_train_test()
+    """
+    if data_dir is None:
+        data_dir = default_paths().data_raw
+    ds = load_dataset(data_dir)
+    return ds.train, ds.test
+
+
+def split_xy(train_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
+    """Split train dataframe into X and y."""
+    if TARGET_COL not in train_df.columns:
+        raise KeyError(f"Missing target column: {TARGET_COL}")
+
+    X = train_df.drop(columns=[TARGET_COL])
+    y = train_df[TARGET_COL]
+    return X, y
 
 
 def handle_missing_values(df: pd.DataFrame) -> pd.DataFrame:
@@ -82,4 +110,3 @@ def handle_missing_values(df: pd.DataFrame) -> pd.DataFrame:
             df[c] = df[c].fillna(df[c].mode(dropna=True)[0])
 
     return df
-
