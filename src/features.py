@@ -9,7 +9,7 @@ from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder
 
 
-def create_features(df: pd.DataFrame) -> pd.DataFrame:
+def build_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Feature engineering designed for strong tabular regressors.
 
