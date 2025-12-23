@@ -1,110 +1,145 @@
-# src/train.py
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
+import json
 
 import numpy as np
 import pandas as pd
 import joblib
 
-from .models import MODEL_FACTORY
-from .evaluate import kfold_oof_predict
+from .config import default_paths
 from .data import load_train_test, split_xy, ID_COL
-from .features import build_features
+from .evaluate import kfold_oof_predict
+from .pipelines import get_pipeline, PIPELINES
 
-TARGET = "SalePrice"
 
 def prepare_features(train_df: pd.DataFrame, test_df: pd.DataFrame):
-    # split
-    X_raw, y_raw = split_xy(train_df)  # X includes Id unless you removed it; we will drop ID_COL below
+    """
+    Prepare raw X/y/test for sklearn Pipelines.
+    - drop Id column (not a feature)
+    - y uses log1p (Kaggle standard for this competition)
+    """
+    X_raw, y_raw = split_xy(train_df)
+
     if ID_COL in X_raw.columns:
         X_raw = X_raw.drop(columns=[ID_COL])
-    if ID_COL in test_df.columns:
-        test_raw = test_df.drop(columns=[ID_COL])
-    else:
-        test_raw = test_df.copy()
 
-    # build features jointly to keep consistent columns
-    all_df = pd.concat([X_raw, test_raw], axis=0, ignore_index=True)
-    all_feat = build_features(all_df)
+    X_test = test_df.copy()
+    if ID_COL in X_test.columns:
+        X_test = X_test.drop(columns=[ID_COL])
 
-    X = all_feat.iloc[: len(X_raw)].copy()
-    X_test = all_feat.iloc[len(X_raw):].copy()
+    y = np.log1p(y_raw.astype(float).values)
+    return X_raw, y, X_test
 
-    # IMPORTANT: for sklearn/xgb, categories must be numeric
-    # convert category -> codes, keep NaN as -1
-    for c in X.columns:
-        if str(X[c].dtype) == "category":
-            X[c] = X[c].cat.codes.replace({-1: -1}).astype(int)
-            X_test[c] = X_test[c].cat.codes.replace({-1: -1}).astype(int)
 
-    # y log transform
-    y = np.log1p(y_raw.values.astype(float))
-    return X, y, X_test
+def ensure_dirs(*dirs: Path):
+    for d in dirs:
+        d.mkdir(parents=True, exist_ok=True)
 
-def run_one(model_name: str, X, y, X_test, reports_dir: Path, models_dir: Path, seed: int = 42):
-    model_fn = MODEL_FACTORY[model_name]
+
+def save_metrics(reports_dir: Path, model_name: str, cv_rmse: float, fold_scores: list[float]):
+    payload = {
+        "model": model_name,
+        "cv_rmse": float(cv_rmse),
+        "fold_rmse": [float(x) for x in fold_scores],
+    }
+    out = reports_dir / f"{model_name}_metrics.json"
+    out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def run_one(model_name: str, X: pd.DataFrame, y: np.ndarray, X_test: pd.DataFrame,
+            reports_dir: Path, models_dir: Path, seed: int, n_splits: int = 5):
+    print(f"\n=== Training: {model_name} ===")
+
+    # model factory: each fold should get a fresh estimator
+    model_fn = lambda: get_pipeline(model_name, seed=seed)
 
     oof, test_pred, cv_rmse, fold_scores = kfold_oof_predict(
         model=model_fn,
         X=X,
-        y=pd.Series(y),
+        y=y,
         X_test=X_test,
-        n_splits=5,
+        n_splits=n_splits,
         seed=seed,
     )
 
-    # save artifacts
-    reports_dir.mkdir(parents=True, exist_ok=True)
-    models_dir.mkdir(parents=True, exist_ok=True)
+    # Save OOF + test predictions (log-space)
+    np.save(reports_dir / f"{model_name}_oof.npy", oof)
+    np.save(reports_dir / f"{model_name}_test_pred.npy", test_pred)
 
-    np.save(reports_dir / f"oof_{model_name}.npy", oof)
-    np.save(reports_dir / f"testpred_{model_name}.npy", test_pred)
+    # Save metrics
+    save_metrics(reports_dir, model_name, cv_rmse, fold_scores)
 
-    joblib.dump(
-        {"model_name": model_name, "model_factory": model_name, "feature_columns": list(X.columns)},
-        models_dir / f"{model_name}.joblib"
-    )
+    # Fit full model and save for reproducibility
+    final_model = get_pipeline(model_name, seed=seed)
+    final_model.fit(X, y)
+    joblib.dump(final_model, models_dir / f"{model_name}.joblib")
 
+    print(f"[{model_name}] CV RMSE (log-space): {cv_rmse:.6f}")
     return {
         "model": model_name,
-        "cv_rmse_log": float(cv_rmse),
-        "fold_scores_log": [float(x) for x in fold_scores],
+        "cv_rmse": cv_rmse,
+        "fold_scores": fold_scores,
+        "oof_path": str(reports_dir / f"{model_name}_oof.npy"),
+        "test_pred_path": str(reports_dir / f"{model_name}_test_pred.npy"),
+        "model_path": str(models_dir / f"{model_name}.joblib"),
     }
+
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, default="all", choices=["all"] + sorted(MODEL_FACTORY.keys()))
+    parser.add_argument("--model", type=str, default="all",
+                        help=f"one of {sorted(PIPELINES.keys())} or 'all'")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--folds", type=int, default=5)
+    parser.add_argument("--data-dir", type=str, default=None,
+                        help="Path to directory containing train.csv/test.csv. If omitted, uses config.default_paths().data_raw")
     args = parser.parse_args()
 
-    project_root = Path(__file__).resolve().parents[1]
-    reports_dir = project_root / "reports"
-    models_dir = project_root / "models"
+    paths = default_paths()
+    reports_dir = paths.reports_dir
+    models_dir = paths.models_dir
+    ensure_dirs(reports_dir, models_dir)
 
-    train_df, test_df = load_train_test()
+    # Load data
+    if args.data_dir:
+        train_df, test_df = load_train_test(Path(args.data_dir))
+    else:
+        train_df, test_df = load_train_test()  # data.py should support default or you can pass paths.data_raw
+
+    # Prepare raw features/target
     X, y, X_test = prepare_features(train_df, test_df)
 
-    results = []
-    models_to_run = sorted(MODEL_FACTORY.keys()) if args.model == "all" else [args.model]
+    # Select models
+    if args.model == "all":
+        to_run = sorted(PIPELINES.keys())
+    else:
+        if args.model not in PIPELINES:
+            raise ValueError(f"Unknown model: {args.model}. Choose from {sorted(PIPELINES.keys())} or 'all'")
+        to_run = [args.model]
 
-    for name in models_to_run:
-        print(f"\n=== Training: {name} ===")
-        res = run_one(name, X, y, X_test, reports_dir, models_dir, seed=args.seed)
+    # Train
+    results = []
+    for name in to_run:
+        res = run_one(
+            model_name=name,
+            X=X,
+            y=y,
+            X_test=X_test,
+            reports_dir=reports_dir,
+            models_dir=models_dir,
+            seed=args.seed,
+            n_splits=args.folds,
+        )
         results.append(res)
 
-    # metrics table
-    metrics_path = reports_dir / "metrics.json"
-    metrics_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
-    print(f"\nSaved metrics to: {metrics_path}")
+    # Save summary
+    summary_path = reports_dir / "cv_summary.json"
+    summary_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
+    print(f"\nSaved CV summary to: {summary_path}")
 
-    # also save a csv summary for convenience
-    dfm = pd.DataFrame([{"model": r["model"], "cv_rmse_log": r["cv_rmse_log"]} for r in results]).sort_values("cv_rmse_log")
-    csv_path = reports_dir / "metrics.csv"
-    dfm.to_csv(csv_path, index=False)
-    print(f"Saved metrics to: {csv_path}")
 
 if __name__ == "__main__":
     main()
+
