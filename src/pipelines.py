@@ -11,7 +11,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from sklearn.linear_model import Ridge
-from sklearn.ensemble import ExtraTreesRegressor
+from sklearn.ensemble import ExtraTreesRegressor, VotingRegressor, StackingRegressor
 
 from .transformers import MissingValueHandler, FeatureEngineerV2
 
@@ -128,11 +128,44 @@ def make_lgbm(seed: int = 42) -> Pipeline:
     ])
 
 
+
+def make_voting_mean(seed: int = 42) -> Pipeline:
+    """Ensemble inside a single sklearn estimator: mean voting in log-space."""
+    estimators = [
+        ("ridge", make_ridge(seed=seed)),
+        ("extratrees", make_extratrees(seed=seed)),
+        ("xgb", make_xgb(seed=seed)),
+        ("lgbm", make_lgbm(seed=seed)),
+    ]
+    # VotingRegressor averages base predictions
+    model = VotingRegressor(estimators=estimators)
+    return model
+
+
+def make_stacking(seed: int = 42) -> Pipeline:
+    """Stacking ensemble inside sklearn: base models + Ridge meta learner."""
+    estimators = [
+        ("ridge", make_ridge(seed=seed)),
+        ("extratrees", make_extratrees(seed=seed)),
+        ("xgb", make_xgb(seed=seed)),
+        ("lgbm", make_lgbm(seed=seed)),
+    ]
+    final_estimator = Ridge(alpha=1.0, random_state=seed)
+    model = StackingRegressor(
+        estimators=estimators,
+        final_estimator=final_estimator,
+        passthrough=False,
+        n_jobs=-1,
+    )
+    return model
+
 PIPELINES = {
     "ridge": make_ridge,
     "extratrees": make_extratrees,
     "xgb": make_xgb,
     "lgbm": make_lgbm,
+    "voting_mean": make_voting_mean,
+    "stacking": make_stacking,
 }
 
 

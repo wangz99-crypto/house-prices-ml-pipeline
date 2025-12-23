@@ -23,8 +23,8 @@ def load_saved_preds(reports_dir: Path, model_names: list[str]):
         rmses = [1.0] * len(model_names)
 
     for name in model_names:
-        oofs.append(np.load(reports_dir / f"oof_{name}.npy"))
-        tests.append(np.load(reports_dir / f"testpred_{name}.npy"))
+        oofs.append(np.load(reports_dir / f"{name}_oof.npy"))
+        tests.append(np.load(reports_dir / f"{name}_test_pred.npy"))
     return oofs, tests, rmses
 
 def save_submission(test_ids: pd.Series, pred_log: np.ndarray, out_path: Path):
@@ -48,8 +48,7 @@ def main():
     model_names = ["lgbm", "xgb", "ridge", "extratrees"]
 
     if args.model:
-        if args.model not in model_names:
-            raise ValueError(f"Unknown model: {args.model}. Choose from {model_names}")
+        # allow any trained model name as long as its prediction files exist
         _, tests, _ = load_saved_preds(reports_dir, [args.model])
         pred_log = tests[0]
         save_submission(test_ids, pred_log, project_root / f"submission_{args.model}.csv")

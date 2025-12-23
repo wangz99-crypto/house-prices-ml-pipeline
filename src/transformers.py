@@ -6,10 +6,42 @@ from sklearn.base import BaseEstimator, TransformerMixin
 
 
 class MissingValueHandler(BaseEstimator, TransformerMixin):
-    """Kaggle House Prices missing-value handling (pragmatic version)."""
+    """House Prices missing-value handling.
+
+    Notes on leakage:
+    - Any statistics used to fill missing values (e.g., group medians) are learned in `fit()`
+      on the training fold, then applied in `transform()` for both train/valid/test.
+    """
 
     def fit(self, X: pd.DataFrame, y=None):
-        # 未来要做“更严格不泄漏”：把 groupby median/mode 存在这里
+        X = X.copy()
+
+        # LotFrontage: median by Neighborhood (fallback to global median)
+        if "LotFrontage" in X.columns:
+            self.lotfrontage_global_median_ = float(pd.to_numeric(X["LotFrontage"], errors="coerce").median())
+        else:
+            self.lotfrontage_global_median_ = 0.0
+
+        if "LotFrontage" in X.columns and "Neighborhood" in X.columns:
+            lf = pd.to_numeric(X["LotFrontage"], errors="coerce")
+            self.lotfrontage_by_neighborhood_ = (
+                pd.DataFrame({"Neighborhood": X["Neighborhood"], "LotFrontage": lf})
+                .groupby("Neighborhood")["LotFrontage"]
+                .median()
+            )
+        else:
+            self.lotfrontage_by_neighborhood_ = pd.Series(dtype=float)
+
+        # Mode fills that should also be learned from train only (optional but safer)
+        self.mszoning_mode_ = X["MSZoning"].mode(dropna=True).iloc[0] if "MSZoning" in X.columns else None
+        self.utilities_mode_ = X["Utilities"].mode(dropna=True).iloc[0] if "Utilities" in X.columns else None
+        self.exterior1st_mode_ = X["Exterior1st"].mode(dropna=True).iloc[0] if "Exterior1st" in X.columns else None
+        self.exterior2nd_mode_ = X["Exterior2nd"].mode(dropna=True).iloc[0] if "Exterior2nd" in X.columns else None
+        self.kitchenqual_mode_ = X["KitchenQual"].mode(dropna=True).iloc[0] if "KitchenQual" in X.columns else None
+        self.functional_mode_ = X["Functional"].mode(dropna=True).iloc[0] if "Functional" in X.columns else None
+        self.sale_type_mode_ = X["SaleType"].mode(dropna=True).iloc[0] if "SaleType" in X.columns else None
+        self.electrical_mode_ = X["Electrical"].mode(dropna=True).iloc[0] if "Electrical" in X.columns else None
+
         return self
 
     def transform(self, X: pd.DataFrame):
@@ -33,22 +65,28 @@ class MissingValueHandler(BaseEstimator, TransformerMixin):
             if c in df.columns:
                 df[c] = df[c].fillna(0)
 
-        if "LotFrontage" in df.columns and "Neighborhood" in df.columns:
-            df["LotFrontage"] = df["LotFrontage"].fillna(
-                df.groupby("Neighborhood")["LotFrontage"].transform("median")
-            )
-            df["LotFrontage"] = df["LotFrontage"].fillna(df["LotFrontage"].median())
+        # LotFrontage: use training-fold medians only
+        if "LotFrontage" in df.columns:
+            lf = pd.to_numeric(df["LotFrontage"], errors="coerce")
+            if "Neighborhood" in df.columns and len(self.lotfrontage_by_neighborhood_) > 0:
+                mapped = df["Neighborhood"].map(self.lotfrontage_by_neighborhood_)
+                lf = lf.fillna(mapped)
+            lf = lf.fillna(self.lotfrontage_global_median_)
+            df["LotFrontage"] = lf
 
-        if "GarageYrBlt" in df.columns and "YearBuilt" in df.columns:
-            df["GarageYrBlt"] = df["GarageYrBlt"].fillna(df["YearBuilt"])
+        # Mode fills (train-only)
+        def _fill_mode(col, mode_val):
+            if col in df.columns and mode_val is not None:
+                df[col] = df[col].fillna(mode_val)
 
-        mode_cols = [
-            "MSZoning", "Utilities", "Exterior1st", "Exterior2nd", "KitchenQual",
-            "Functional", "SaleType", "Electrical",
-        ]
-        for c in mode_cols:
-            if c in df.columns:
-                df[c] = df[c].fillna(df[c].mode(dropna=True)[0])
+        _fill_mode("MSZoning", self.mszoning_mode_)
+        _fill_mode("Utilities", self.utilities_mode_)
+        _fill_mode("Exterior1st", self.exterior1st_mode_)
+        _fill_mode("Exterior2nd", self.exterior2nd_mode_)
+        _fill_mode("KitchenQual", self.kitchenqual_mode_)
+        _fill_mode("Functional", self.functional_mode_)
+        _fill_mode("SaleType", self.sale_type_mode_)
+        _fill_mode("Electrical", self.electrical_mode_)
 
         return df
 

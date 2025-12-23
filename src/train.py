@@ -29,7 +29,7 @@ def prepare_features(train_df: pd.DataFrame, test_df: pd.DataFrame):
     if ID_COL in X_test.columns:
         X_test = X_test.drop(columns=[ID_COL])
 
-    y = np.log1p(y_raw.astype(float).values)
+    y = np.log1p(y_raw.astype(float))
     return X_raw, y, X_test
 
 
@@ -48,7 +48,7 @@ def save_metrics(reports_dir: Path, model_name: str, cv_rmse: float, fold_scores
     out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
-def run_one(model_name: str, X: pd.DataFrame, y: np.ndarray, X_test: pd.DataFrame,
+def run_one(model_name: str, X: pd.DataFrame, y: pd.Series, X_test: pd.DataFrame,
             reports_dir: Path, models_dir: Path, seed: int, n_splits: int = 5):
     print(f"\n=== Training: {model_name} ===")
 
@@ -106,7 +106,7 @@ def main():
     if args.data_dir:
         train_df, test_df = load_train_test(Path(args.data_dir))
     else:
-        train_df, test_df = load_train_test()  # data.py should support default or you can pass paths.data_raw
+        train_df, test_df = load_train_test(args.data_dir)  # data.py should support default or you can pass paths.data_raw
 
     # Prepare raw features/target
     X, y, X_test = prepare_features(train_df, test_df)
@@ -134,6 +134,12 @@ def main():
         )
         results.append(res)
 
+
+    # Save a tidy metrics.csv for downstream ensembling/scripts
+    metrics_rows = []
+    for r in results:
+        metrics_rows.append({"model": r["model"], "cv_rmse_log": float(r["cv_rmse"])})
+    pd.DataFrame(metrics_rows).to_csv(reports_dir / "metrics.csv", index=False)
     # Save summary
     summary_path = reports_dir / "cv_summary.json"
     summary_path.write_text(json.dumps(results, indent=2), encoding="utf-8")

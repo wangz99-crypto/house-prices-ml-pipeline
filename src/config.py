@@ -12,6 +12,15 @@ class Paths:
     models: Path
     reports: Path
 
+    # Backward-compatible aliases
+    @property
+    def models_dir(self) -> Path:
+        return self.models
+
+    @property
+    def reports_dir(self) -> Path:
+        return self.reports
+
 
 def default_paths(project_root: Path | None = None) -> Paths:
     root = project_root or Path(__file__).resolve().parents[1]
