@@ -1,6 +1,5 @@
-from .data import handle_missing_values
 from __future__ import annotations
-
+from .data import handle_missing_values
 from dataclasses import dataclass
 from typing import List, Tuple
 
