@@ -181,3 +181,26 @@ cython_debug/
 .cursorindexingignore
 data/raw/test.csv
 data/raw/train.csv
+
+
+models/registry/
+reports/*.npy
+reports/*_oof.npy
+reports/*_test_pred.npy
+models/*.joblib
+
+# Reports: ignore heavy artifacts, keep light summaries
+reports/
+!reports/metrics.csv
+!reports/cv_summary.json
+!reports/*_metrics.json
+
+
+# Reports: ignore heavy artifacts, keep light summaries
+reports/
+!reports/metrics.csv
+!reports/cv_summary.json
+!reports/*_metrics.json
+
+# Accidental file/folder
+python
