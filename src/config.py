@@ -11,6 +11,7 @@ class Paths:
     data_processed: Path
     models: Path
     reports: Path
+    models_registry: Path
 
     # Backward-compatible aliases
     @property
@@ -30,4 +31,5 @@ def default_paths(project_root: Path | None = None) -> Paths:
         data_processed=root / "data" / "processed",
         models=root / "models",
         reports=root / "reports",
+        models_registry=root / "models" / "registry",
     )

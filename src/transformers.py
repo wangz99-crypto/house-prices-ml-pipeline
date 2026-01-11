@@ -3,18 +3,25 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.utils.validation import check_is_fitted
+
+
+def _safe_mode(s: pd.Series):
+    s = s.dropna()
+    if s.empty:
+        return None
+    m = s.mode()
+    return m.iloc[0] if len(m) else None
 
 
 class MissingValueHandler(BaseEstimator, TransformerMixin):
-    """House Prices missing-value handling.
-
-    Notes on leakage:
-    - Any statistics used to fill missing values (e.g., group medians) are learned in `fit()`
-      on the training fold, then applied in `transform()` for both train/valid/test.
-    """
+    """House Prices missing-value handling (train-fold safe)."""
 
     def fit(self, X: pd.DataFrame, y=None):
         X = X.copy()
+        self.is_fitted_ = True
+        self.n_features_in_ = X.shape[1]
+        self.feature_names_in_ = getattr(X, "columns", None)
 
         # LotFrontage: median by Neighborhood (fallback to global median)
         if "LotFrontage" in X.columns:
@@ -32,19 +39,21 @@ class MissingValueHandler(BaseEstimator, TransformerMixin):
         else:
             self.lotfrontage_by_neighborhood_ = pd.Series(dtype=float)
 
-        # Mode fills that should also be learned from train only (optional but safer)
-        self.mszoning_mode_ = X["MSZoning"].mode(dropna=True).iloc[0] if "MSZoning" in X.columns else None
-        self.utilities_mode_ = X["Utilities"].mode(dropna=True).iloc[0] if "Utilities" in X.columns else None
-        self.exterior1st_mode_ = X["Exterior1st"].mode(dropna=True).iloc[0] if "Exterior1st" in X.columns else None
-        self.exterior2nd_mode_ = X["Exterior2nd"].mode(dropna=True).iloc[0] if "Exterior2nd" in X.columns else None
-        self.kitchenqual_mode_ = X["KitchenQual"].mode(dropna=True).iloc[0] if "KitchenQual" in X.columns else None
-        self.functional_mode_ = X["Functional"].mode(dropna=True).iloc[0] if "Functional" in X.columns else None
-        self.sale_type_mode_ = X["SaleType"].mode(dropna=True).iloc[0] if "SaleType" in X.columns else None
-        self.electrical_mode_ = X["Electrical"].mode(dropna=True).iloc[0] if "Electrical" in X.columns else None
+        # Train-only modes (safe)
+        self.mszoning_mode_ = _safe_mode(X["MSZoning"]) if "MSZoning" in X.columns else None
+        self.utilities_mode_ = _safe_mode(X["Utilities"]) if "Utilities" in X.columns else None
+        self.exterior1st_mode_ = _safe_mode(X["Exterior1st"]) if "Exterior1st" in X.columns else None
+        self.exterior2nd_mode_ = _safe_mode(X["Exterior2nd"]) if "Exterior2nd" in X.columns else None
+        self.kitchenqual_mode_ = _safe_mode(X["KitchenQual"]) if "KitchenQual" in X.columns else None
+        self.functional_mode_ = _safe_mode(X["Functional"]) if "Functional" in X.columns else None
+        self.sale_type_mode_ = _safe_mode(X["SaleType"]) if "SaleType" in X.columns else None
+        self.electrical_mode_ = _safe_mode(X["Electrical"]) if "Electrical" in X.columns else None
 
         return self
 
     def transform(self, X: pd.DataFrame):
+        check_is_fitted(self, ["lotfrontage_global_median_", "lotfrontage_by_neighborhood_"])
+
         df = X.copy()
 
         none_cols = [
@@ -74,6 +83,12 @@ class MissingValueHandler(BaseEstimator, TransformerMixin):
             lf = lf.fillna(self.lotfrontage_global_median_)
             df["LotFrontage"] = lf
 
+        # GarageYrBlt: if missing, use YearBuilt (keeps age logic consistent)
+        if "GarageYrBlt" in df.columns and "YearBuilt" in df.columns:
+            g = pd.to_numeric(df["GarageYrBlt"], errors="coerce")
+            yb = pd.to_numeric(df["YearBuilt"], errors="coerce")
+            df["GarageYrBlt"] = g.fillna(yb)
+
         # Mode fills (train-only)
         def _fill_mode(col, mode_val):
             if col in df.columns and mode_val is not None:
@@ -89,30 +104,47 @@ class MissingValueHandler(BaseEstimator, TransformerMixin):
         _fill_mode("Electrical", self.electrical_mode_)
 
         return df
-
+    def set_output(self, *, transform=None):
+        # 确保输出是pandas DataFrame
+        return self
 
 class FeatureEngineerV2(BaseEstimator, TransformerMixin):
-    """Your engineered features (tree + linear friendly)."""
-
+    """Engineered features (tree + linear friendly)."""
     def __init__(self, enable_logs: bool = True):
         self.enable_logs = enable_logs
 
     def fit(self, X: pd.DataFrame, y=None):
+        # ✅ fitted flag: 让 sklearn 知道它已经 fit 过
+        self.is_fitted_ = True
+
+        # ✅ 可选但推荐：记录输入维度/列（对 debug 很有用）
+        self.n_features_in_ = X.shape[1]
+        self.feature_names_in_ = getattr(X, "columns", None)
+
         return self
 
     def transform(self, X: pd.DataFrame):
+        # （你不需要 check_is_fitted，这里不加也行）
         df = X.copy()
+
+
 
         # ---------- Time / age ----------
         if {"YrSold", "YearBuilt"}.issubset(df.columns):
-            df["HouseAge"] = df["YrSold"] - df["YearBuilt"]
+            ys = pd.to_numeric(df["YrSold"], errors="coerce")
+            yb = pd.to_numeric(df["YearBuilt"], errors="coerce")
+            df["HouseAge"] = (ys - yb).clip(lower=0)
             df["IsNewHouse"] = (df["HouseAge"] <= 5).astype(int)
 
         if {"YrSold", "YearRemodAdd"}.issubset(df.columns):
-            df["RemodAge"] = df["YrSold"] - df["YearRemodAdd"]
+            ys = pd.to_numeric(df["YrSold"], errors="coerce")
+            yr = pd.to_numeric(df["YearRemodAdd"], errors="coerce")
+            df["RemodAge"] = (ys - yr).clip(lower=0)
 
         if {"YearBuilt", "YearRemodAdd"}.issubset(df.columns):
-            df["IsRemodeled"] = (df["YearBuilt"] != df["YearRemodAdd"]).astype(int)
+            yb = pd.to_numeric(df["YearBuilt"], errors="coerce")
+            yr = pd.to_numeric(df["YearRemodAdd"], errors="coerce")
+            df["IsRemodeled"] = (yb != yr).astype(int)
 
         # ---------- Areas ----------
         for col in ["TotalBsmtSF", "1stFlrSF", "2ndFlrSF"]:
@@ -140,7 +172,7 @@ class FeatureEngineerV2(BaseEstimator, TransformerMixin):
         df["TotalPorchSF"] = df["OpenPorchSF"] + df["EnclosedPorch"] + df["3SsnPorch"] + df["ScreenPorch"]
 
         # ---------- Amenity flags ----------
-        for col in ["TotalBsmtSF", "GarageArea", "Fireplaces", "PoolArea", "WoodDeckSF", "MasVnrArea"]:
+        for col in ["GarageArea", "Fireplaces", "PoolArea", "WoodDeckSF", "MasVnrArea"]:
             if col not in df.columns:
                 df[col] = 0
 
@@ -171,22 +203,25 @@ class FeatureEngineerV2(BaseEstimator, TransformerMixin):
         df["IsLuxury"] = ((df["OverallQual"] >= 8) & (df["GrLivArea"] >= 2500)).astype(int)
 
         if "GrLivArea" in df.columns:
-            df["GrLivAreaBin"] = pd.cut(
+            b = pd.cut(
                 df["GrLivArea"],
                 bins=[-np.inf, 1200, 2000, np.inf],
                 labels=["small", "mid", "large"],
-            ).astype(str)
+            )
+            df["GrLivAreaBin"] = b.astype("object").where(~b.isna(), "missing")
 
         # ---------- log features ----------
         if self.enable_logs:
             log_cols = ["LotArea", "LotFrontage", "GrLivArea", "TotalBsmtSF", "MasVnrArea", "GarageArea", "1stFlrSF", "2ndFlrSF"]
             for c in log_cols:
                 if c in df.columns:
-                    df[c + "_log"] = np.log1p(df[c])
+                    vals = pd.to_numeric(df[c], errors="coerce").clip(lower=0)
+                    df[c + "_log"] = np.log1p(vals)
 
         # Neighborhood × Quality interaction (categorical)
         if {"Neighborhood", "OverallQual"}.issubset(df.columns):
             df["Neighborhood_Qual"] = df["Neighborhood"].astype(str) + "_" + df["OverallQual"].astype(str)
 
         return df
+
 

@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict
-
 import numpy as np
-import pandas as pd
-
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer, make_column_selector
 from sklearn.impute import SimpleImputer
@@ -12,6 +8,7 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from sklearn.linear_model import Ridge
 from sklearn.ensemble import ExtraTreesRegressor, VotingRegressor, StackingRegressor
+
 
 from .transformers import MissingValueHandler, FeatureEngineerV2
 
@@ -37,7 +34,7 @@ def preprocessor_for_linear() -> ColumnTransformer:
         ("ohe", OneHotEncoder(handle_unknown="ignore")),
     ])
 
-    return ColumnTransformer(
+    ct = ColumnTransformer(
         transformers=[
             ("num", num_pipe, num_sel),
             ("cat", cat_pipe, cat_sel),
@@ -45,10 +42,10 @@ def preprocessor_for_linear() -> ColumnTransformer:
         remainder="drop",
         verbose_feature_names_out=False,
     )
+    return ct
 
 
 def preprocessor_for_trees() -> ColumnTransformer:
-    # tree models usually don't need scaling
     num_sel = make_column_selector(dtype_include=np.number)
     cat_sel = make_column_selector(dtype_include=object)
 
@@ -61,7 +58,7 @@ def preprocessor_for_trees() -> ColumnTransformer:
         ("ohe", OneHotEncoder(handle_unknown="ignore")),
     ])
 
-    return ColumnTransformer(
+    ct = ColumnTransformer(
         transformers=[
             ("num", num_pipe, num_sel),
             ("cat", cat_pipe, cat_sel),
@@ -69,17 +66,18 @@ def preprocessor_for_trees() -> ColumnTransformer:
         remainder="drop",
         verbose_feature_names_out=False,
     )
+    return ct
 
-
-def make_ridge(seed: int = 42) -> Pipeline:
+def make_ridge(seed: int = 42):
+    # NOTE: Ridge doesn't accept random_state (only some solvers do), so remove it.
     return Pipeline([
         ("shared", shared_pipeline()),
         ("prep", preprocessor_for_linear()),
-        ("model", Ridge(alpha=12.0, random_state=seed)),
+        ("model", Ridge(alpha=12.0)),
     ])
 
 
-def make_extratrees(seed: int = 42) -> Pipeline:
+def make_extratrees(seed: int = 42):
     return Pipeline([
         ("shared", shared_pipeline()),
         ("prep", preprocessor_for_trees()),
@@ -87,12 +85,12 @@ def make_extratrees(seed: int = 42) -> Pipeline:
             n_estimators=1500,
             random_state=seed,
             n_jobs=-1,
-            max_features="sqrt",  # sklearn-compatible
+            max_features="sqrt",
         )),
     ])
 
 
-def make_xgb(seed: int = 42) -> Pipeline:
+def make_xgb(seed: int = 42):
     import xgboost as xgb
     return Pipeline([
         ("shared", shared_pipeline()),
@@ -111,11 +109,12 @@ def make_xgb(seed: int = 42) -> Pipeline:
     ])
 
 
-def make_lgbm(seed: int = 42) -> Pipeline:
+def make_lgbm(seed: int = 42):
     import lightgbm as lgb
+
     return Pipeline([
         ("shared", shared_pipeline()),
-        ("prep", preprocessor_for_trees()),
+        ("prep", preprocessor_for_trees()),             
         ("model", lgb.LGBMRegressor(
             n_estimators=5000,
             learning_rate=0.03,
@@ -128,36 +127,31 @@ def make_lgbm(seed: int = 42) -> Pipeline:
     ])
 
 
-
-def make_voting_mean(seed: int = 42) -> Pipeline:
-    """Ensemble inside a single sklearn estimator: mean voting in log-space."""
+def make_voting_mean(seed: int = 42):
     estimators = [
         ("ridge", make_ridge(seed=seed)),
         ("extratrees", make_extratrees(seed=seed)),
         ("xgb", make_xgb(seed=seed)),
         ("lgbm", make_lgbm(seed=seed)),
     ]
-    # VotingRegressor averages base predictions
-    model = VotingRegressor(estimators=estimators)
-    return model
+    return VotingRegressor(estimators=estimators)
 
 
-def make_stacking(seed: int = 42) -> Pipeline:
-    """Stacking ensemble inside sklearn: base models + Ridge meta learner."""
+def make_stacking(seed: int = 42):
     estimators = [
         ("ridge", make_ridge(seed=seed)),
         ("extratrees", make_extratrees(seed=seed)),
         ("xgb", make_xgb(seed=seed)),
         ("lgbm", make_lgbm(seed=seed)),
     ]
-    final_estimator = Ridge(alpha=1.0, random_state=seed)
-    model = StackingRegressor(
+    final_estimator = Ridge(alpha=1.0)
+    return StackingRegressor(
         estimators=estimators,
         final_estimator=final_estimator,
         passthrough=False,
         n_jobs=-1,
     )
-    return model
+
 
 PIPELINES = {
     "ridge": make_ridge,
@@ -169,7 +163,7 @@ PIPELINES = {
 }
 
 
-def get_pipeline(model_name: str, seed: int = 42) -> Pipeline:
+def get_pipeline(model_name: str, seed: int = 42):
     if model_name not in PIPELINES:
         raise ValueError(f"Unknown model: {model_name}. Choose from {sorted(PIPELINES.keys())}")
     return PIPELINES[model_name](seed=seed)
