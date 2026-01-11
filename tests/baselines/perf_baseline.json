@@ -1,0 +1,11 @@
+{
+  "dataset": "tests/data/sample_train.csv",
+  "target": "log1p(SalePrice)",
+  "model": "Ridge(alpha=10.0)",
+  "cv": {
+    "n_splits": 3,
+    "seed": 42
+  },
+  "rmse": 0.15973973439101136,
+  "tolerance": 0.015
+}
