@@ -123,6 +123,7 @@ def make_lgbm(seed: int = 42):
             colsample_bytree=0.85,
             random_state=seed,
             n_jobs=-1,
+            verbose=-1,
         )),
     ])
 

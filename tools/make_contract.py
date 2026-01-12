@@ -6,8 +6,8 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
-from src.data import load_train_test, split_xy
 from src.pipelines import get_pipeline
 
 
@@ -18,16 +18,15 @@ def write_json(path: Path, payload: dict) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--data", type=str, default="tests/data/sample_train.csv")
     ap.add_argument("--model", required=True, help="ridge | lgbm | extratrees | xgb | voting_mean | stacking")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--rows", type=int, default=12)
     args = ap.parse_args()
 
-    train_df, _ = load_train_test()   # uses config.default_paths().data_raw by default
-    X_raw, y_raw = split_xy(train_df)
-
-    # match your pipeline training target (log1p)
-    y = np.log1p(y_raw)
+    train_df = pd.read_csv(Path(args.data))
+    X_raw = train_df.drop(columns=["SalePrice"])
+    y = np.log1p(train_df["SalePrice"])
 
     # choose deterministic golden rows
     rng = np.random.default_rng(args.seed)

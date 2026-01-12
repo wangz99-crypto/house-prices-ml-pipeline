@@ -10,7 +10,9 @@ import pandas as pd
 from src.pipelines import get_pipeline
 
 
-CONTRACT_DIR = Path("tests/contracts")
+ROOT = Path(__file__).resolve().parents[2]   # repo root (tests/unit/ -> repo)
+CONTRACT_DIR = ROOT / "tests" / "contracts"
+SAMPLE_TRAIN = ROOT / "tests" / "data" / "sample_train.csv"
 
 
 def load_contract(model_name: str) -> dict:
@@ -30,7 +32,7 @@ def test_contract_schema_and_predictions_lgbm():
 def _assert_contract_predictions_within_range(model_name: str) -> None:
     payload = load_contract(model_name)
 
-    # ---- schema (match your make_contract.py output) ----
+    # ---- schema ----
     assert payload["model_name"] == model_name
     features = payload["feature_columns"]
     X_rows = payload["golden_X"]
@@ -42,51 +44,27 @@ def _assert_contract_predictions_within_range(model_name: str) -> None:
     assert len(pred_lo) == len(X_rows)
     assert len(pred_hi) == len(X_rows)
 
-    # ---- build X with stable column order ----
+    # ---- build X (stable column order) ----
     X = pd.DataFrame(X_rows).reindex(columns=features)
 
-    # ---- run predictions ----
+    # ---- fit pipeline on sample data (CI-safe) ----
     pipe = get_pipeline(model_name, seed=int(payload.get("seed", 42)))
 
-    # IMPORTANT:
-    # contract values were created from training on full train set
-    # so in test we must also fit on full train set to reproduce behavior.
-    # We'll load raw train data via pandas from tests/data/sample_train.csv? -> not enough.
-    # Instead we use your existing project loader: load_train_test + split_xy
-    from src.data import load_train_test, split_xy
+    assert SAMPLE_TRAIN.exists(), f"Missing sample data: {SAMPLE_TRAIN}"
+    df_train = pd.read_csv(SAMPLE_TRAIN)
 
-    train_df, _ = load_train_test()
-    X_train, y_train_raw = split_xy(train_df)
-    y_train = np.log1p(y_train_raw)
+    y_train = np.log1p(df_train["SalePrice"])
+    X_train = df_train.drop(columns=["SalePrice"])
 
     pipe.fit(X_train, y_train)
 
-    preds = pipe.predict(X)
+    # ---- predict ----
+    preds_arr = np.asarray(pipe.predict(X), dtype=float)
+    lo_arr = np.asarray(pred_lo, dtype=float)
+    hi_arr = np.asarray(pred_hi, dtype=float)
 
-    # ---- assert each pred within saved range ----
-    preds = np.asarray(preds, dtype=float)
-    lo = np.asarray(pred_lo, dtype=float)
-    hi = np.asarray(pred_hi, dtype=float)
-
-    # ---- allow tolerance policy (more robust across small code changes) ----
-    policy = payload.get("tolerance_policy", {}) or {}
-    rel = float(policy.get("relative", 0.0))
-    abs_tol = float(policy.get("absolute", 0.0))
-
-    # center-based tolerance: tol = rel * |center| + abs
-    center = (lo + hi) / 2.0
-    tol = rel * np.abs(center) + abs_tol
-
-    lo2 = lo - tol
-    hi2 = hi + tol
-
-    ok = np.all(preds >= lo2) and np.all(preds <= hi2)
-    if not ok:
-        # helpful debug: show the worst violations
-        below = np.min(preds - lo2)
-        above = np.max(preds - hi2)
-        raise AssertionError(
-            f"{model_name} contract failed (with tolerance_policy).\n"
-            f"min(pred-lo2)={float(below):.6f}, max(pred-hi2)={float(above):.6f}\n"
-            f"policy: rel={rel}, abs={abs_tol}"
-        )
+    assert np.all(preds_arr >= lo_arr) and np.all(preds_arr <= hi_arr), (
+        f"{model_name} contract failed.\n"
+        f"min(pred-lo)={float(np.min(preds_arr - lo_arr)):.6f}, "
+        f"max(pred-hi)={float(np.max(preds_arr - hi_arr)):.6f}"
+    )
