@@ -5,7 +5,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer, make_column_selector
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
-
+from sklearn.model_selection import KFold
 from sklearn.linear_model import Ridge
 from sklearn.ensemble import ExtraTreesRegressor, VotingRegressor, StackingRegressor
 
@@ -127,6 +127,8 @@ def make_lgbm(seed: int = 42):
     ])
 
 
+
+
 def make_voting_mean(seed: int = 42):
     estimators = [
         ("ridge", make_ridge(seed=seed)),
@@ -134,7 +136,15 @@ def make_voting_mean(seed: int = 42):
         ("xgb", make_xgb(seed=seed)),
         ("lgbm", make_lgbm(seed=seed)),
     ]
-    return VotingRegressor(estimators=estimators)
+    return VotingRegressor(
+        estimators=estimators,
+        weights=None,   # 显式写出来：就是均值
+        n_jobs=-1,
+    )
+
+
+
+
 
 
 def make_stacking(seed: int = 42):
@@ -144,13 +154,18 @@ def make_stacking(seed: int = 42):
         ("xgb", make_xgb(seed=seed)),
         ("lgbm", make_lgbm(seed=seed)),
     ]
-    final_estimator = Ridge(alpha=1.0)
+
+    cv = KFold(n_splits=5, shuffle=True, random_state=seed)
+    final_estimator = Ridge(alpha=1.0)  
+
     return StackingRegressor(
         estimators=estimators,
         final_estimator=final_estimator,
+        cv=cv,                
         passthrough=False,
         n_jobs=-1,
     )
+
 
 
 PIPELINES = {
