@@ -280,7 +280,7 @@ def main():
         help="Directory containing train.csv/test.csv (default: data/raw)",
     )
 
-    # 控制是否生成 artifacts/current/<model>.joblib
+    # Control whether to generate artifacts/current/<model>.joblib
     parser.add_argument(
         "--no-export-compat-model",
         dest="export_compat_model",
