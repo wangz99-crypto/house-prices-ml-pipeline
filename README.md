@@ -67,37 +67,38 @@ The project goes beyond leaderboard optimization and focuses on **ML engineering
 
 ## 📁 Repository Structure
 
+```text
 house-prices-ml-pipeline/
 ├── data/
-│   └── raw/                 # Kaggle train.csv / test.csv (ignored by git)
+│   └── raw/                         # Kaggle train.csv / test.csv (gitignored)
 ├── src/
-│   ├── train.py            # Training entrypoint + registry integration
-│   ├── predict.py          # Kaggle + production prediction CLI
-│   ├── pipelines.py        # Model & preprocessing pipelines
-│   ├── evaluate.py         # KFold OOF evaluation logic
-│   ├── registry.py         # Model registry, aliases, fingerprints
-│   ├── data.py             # Dataset loading utilities
-│   └── config.py           # Centralized path configuration
+│   ├── train.py                     # Training entrypoint + registry integration
+│   ├── predict.py                   # Kaggle + production prediction CLI
+│   ├── pipelines.py                 # Model & preprocessing pipelines
+│   ├── evaluate.py                  # KFold OOF evaluation logic
+│   ├── registry.py                  # Model registry, aliases, fingerprints
+│   ├── data.py                      # Dataset loading utilities
+│   └── config.py                    # Centralized path configuration
 ├── analysis/
-│   └── feature_importance.py # Registry-aware feature importance extraction
+│   └── feature_importance.py        # Registry-aware feature importance extraction
 ├── notebooks/
+│   ├── 00_experiments_raw/          # Early exploratory experiments
 │   ├── 01_eda/
 │   │   └── House_EDA.ipynb
-│   ├── 02_model_analysis/
-│   │   ├── error_analysis_oof_interactive.ipynb
-│   │   └── feature_importance_viewer.ipynb
-│   └── 00_experiments_raw/ # Early exploratory experiments
+│   └── 02_model_analysis/
+│       ├── error_analysis_oof_interactive.ipynb
+│       └── feature_importance_viewer.ipynb
 ├── tests/
-│   └── unit/               # Unit & regression tests (pytest)
+│   └── unit/                        # Unit & regression tests (pytest)
 ├── tools/
-│   ├── promote.py          # Registry alias promotion helper
-│   └── check_drift.py      # Data drift checks (optional)
-├── artifacts/              # Generated at runtime (mostly gitignored)
-│   ├── reports/
+│   ├── promote.py                   # Registry alias promotion helper
+│   └── check_drift.py               # Data drift checks (optional)
+├── artifacts/                       # Generated at runtime (mostly gitignored)
 │   ├── current/
+│   ├── predictions/
 │   ├── registry/
-│   ├── submissions/
-│   └── predictions/
+│   ├── reports/
+│   └── submissions/
 ├── requirements.txt
 └── README.md
 
