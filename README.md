@@ -67,7 +67,7 @@ The project goes beyond leaderboard optimization and focuses on **ML engineering
 
 ## 📁 Repository Structure
 
-```text
+```
 house-prices-ml-pipeline/
 ├── data/
 │   └── raw/                         # Kaggle train.csv / test.csv (gitignored)
@@ -101,7 +101,9 @@ house-prices-ml-pipeline/
 │   └── submissions/
 ├── requirements.txt
 └── README.md
+
 ---
+
 ---
 
 ## ⚙️ Setup & Installation
