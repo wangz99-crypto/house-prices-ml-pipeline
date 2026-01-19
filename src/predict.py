@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-预测模块 - 支持 Kaggle 模式和 生产(Registry)模式
+Prediction module - supports Kaggle mode and Registry mode
 
 Kaggle:
   python -m src.predict kaggle --model lgbm
