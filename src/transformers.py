@@ -105,7 +105,7 @@ class MissingValueHandler(BaseEstimator, TransformerMixin):
 
         return df
     def set_output(self, *, transform=None):
-        # 确保输出是pandas DataFrame
+        # pandas DataFrame
         return self
 
 class FeatureEngineerV2(BaseEstimator, TransformerMixin):
@@ -114,17 +114,17 @@ class FeatureEngineerV2(BaseEstimator, TransformerMixin):
         self.enable_logs = enable_logs
 
     def fit(self, X: pd.DataFrame, y=None):
-        # ✅ fitted flag: 让 sklearn 知道它已经 fit 过
+        # fitted flag
         self.is_fitted_ = True
 
-        # ✅ 可选但推荐：记录输入维度/列（对 debug 很有用）
+        
         self.n_features_in_ = X.shape[1]
         self.feature_names_in_ = getattr(X, "columns", None)
 
         return self
 
     def transform(self, X: pd.DataFrame):
-        # （你不需要 check_is_fitted，这里不加也行）
+        
         df = X.copy()
 
 
