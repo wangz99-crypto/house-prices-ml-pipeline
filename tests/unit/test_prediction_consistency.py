@@ -10,7 +10,9 @@ import pandas as pd
 from src.pipelines import get_pipeline
 
 
-SAMPLE = Path("tests/data/sample_train.csv")
+ROOT = Path(__file__).resolve().parents[2]
+SAMPLE = ROOT / "tests" / "data" / "sample_train.csv"
+
 
 
 def test_ridge_predictions_same_after_save_load():

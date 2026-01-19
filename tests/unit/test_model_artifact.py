@@ -8,9 +8,12 @@ import numpy as np
 import pandas as pd
 
 
-from src.train import run_one
+from src.train import run_one # type: ignore
 
-SAMPLE = Path("tests/data/sample_train.csv")
+HERE = Path(__file__).resolve()
+REPO_ROOT = HERE.parents[2]           # tests/unit/... -> repo root
+SAMPLE = REPO_ROOT / "tests" / "data" / "sample_train.csv"
+
 
 
 def test_model_can_be_loaded_and_predicts():

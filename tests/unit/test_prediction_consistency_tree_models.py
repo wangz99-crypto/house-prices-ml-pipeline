@@ -14,7 +14,9 @@ warnings.filterwarnings(
     "ignore",
     message="X does not have valid feature names",
 )
-SAMPLE = Path("tests/data/sample_train.csv")
+ROOT = Path(__file__).resolve().parents[2]
+SAMPLE = ROOT / "tests" / "data" / "sample_train.csv"
+
 
 
 def _fit_save_load_predict(model_name: str, X: pd.DataFrame, y: np.ndarray, seed: int = 42):

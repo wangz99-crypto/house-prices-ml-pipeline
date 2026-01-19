@@ -10,7 +10,9 @@ import pandas as pd
 from src.train import run_one
 
 
-SAMPLE = Path("tests/data/sample_train.csv")
+ROOT = Path(__file__).resolve().parents[2]
+SAMPLE = ROOT / "tests" / "data" / "sample_train.csv"
+
 
 
 def test_run_one_registry_model_predictions_reproducible():
