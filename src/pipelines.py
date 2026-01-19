@@ -59,7 +59,6 @@ class AsRegressor(BaseEstimator, RegressorMixin):
 
     def __sklearn_tags__(self):
         tags = super().__sklearn_tags__()
-        # ✅ 关键：让 sklearn 明确知道它是 regressor
         tags.estimator_type = "regressor"
         return tags
 
@@ -96,7 +95,7 @@ def shared_pipeline() -> Pipeline:
 
 def preprocessor_for_linear() -> ColumnTransformer:
     num_sel = make_column_selector(dtype_include=np.number)
-    cat_sel = make_column_selector(dtype_exclude=np.number)  # ✅
+    cat_sel = make_column_selector(dtype_exclude=np.number)  
 
     num_pipe = Pipeline([
         ("impute", SimpleImputer(strategy="median")),
@@ -121,7 +120,7 @@ def preprocessor_for_linear() -> ColumnTransformer:
 
 def preprocessor_for_trees() -> ColumnTransformer:
     num_sel = make_column_selector(dtype_include=np.number)
-    cat_sel = make_column_selector(dtype_exclude=np.number)  # ✅ 关键：所有非数值都当类别
+    cat_sel = make_column_selector(dtype_exclude=np.number)  
 
     num_pipe = Pipeline([
         ("impute", SimpleImputer(strategy="median")),
@@ -209,7 +208,7 @@ def make_lgbm(seed: int = 42):
 
 def make_voting_mean(seed: int = 42):
     estimators = [
-        ("ridge", make_ridge(seed=seed, alpha=6.0)),   # ✅ 关键：voting 默认用 alpha=6
+        ("ridge", make_ridge(seed=seed, alpha=6.0)),   
         ("extratrees", make_extratrees(seed=seed)),
         ("xgb", make_xgb(seed=seed)),
         ("lgbm", make_lgbm(seed=seed)),
