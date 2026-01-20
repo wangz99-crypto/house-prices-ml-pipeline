@@ -41,7 +41,7 @@ def test_tree_models_predictions_close_after_save_load():
     y = np.log1p(df["SalePrice"]).values
     X = df.drop(columns=["SalePrice"])
 
-    # 小样本，CI 稳定 + 快
+    # Small sample size, CI stability+fast
     X_small = X.iloc[:80].copy()
     y_small = y[:80]
 
@@ -52,7 +52,7 @@ def test_tree_models_predictions_close_after_save_load():
 
         assert pred_before.shape == pred_after.shape
 
-        # ⚠️ 注意：这里用的是 pred_before，不是 pred_before_
+        
         assert np.allclose(
             pred_before,
             pred_after,
