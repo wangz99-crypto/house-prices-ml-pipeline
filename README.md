@@ -1,10 +1,10 @@
-# 🏠 House Prices ML Pipeline
+# House Prices ML Pipeline
 
 **End-to-End Machine Learning Pipeline with Cross-Validation, Model Registry, Ensembling, Feature Importance, Error Analysis, and Reproducibility**
 
 ---
 
-## 📌 Project Overview
+## Project Overview
 
 This repository implements a **fully reproducible, end-to-end machine learning system** for the Kaggle competition **House Prices – Advanced Regression Techniques**.
 
@@ -19,7 +19,7 @@ The project goes beyond leaderboard optimization and focuses on **ML engineering
 
 ---
 
-## 🧠 Key Features
+## Key Features
 
 ### Unified Pipeline Design
 - Shared preprocessing + model-specific pipelines
@@ -65,7 +65,7 @@ The project goes beyond leaderboard optimization and focuses on **ML engineering
 
 ---
 
-## 📁 Repository Structure
+## Repository Structure
 
 ```
 
@@ -108,14 +108,14 @@ house-prices-ml-pipeline/
 
 ---
 
-## ⚙️ Setup & Installation
+## Setup & Installation
 
-### 1️⃣ Create a clean environment (recommended)
+### 1 Create a clean environment (recommended)
 conda create -n hp_clean python=3.10 -y
 conda activate hp_clean
 
 
-### 2️⃣ Install dependencies
+### 2️ Install dependencies
 pip install -r requirements.txt
 
 
@@ -126,7 +126,7 @@ conda install -c conda-forge lightgbm xgboost -y
 
 ---
 
-## 🚀 Training Models
+## Training Models
 
 ### Train a single model
 
@@ -145,7 +145,7 @@ python -m src.train --model all
 
 ---
 
-## 📦 Training Outputs & Artifacts
+## Training Outputs & Artifacts
 
 After training, the following artifacts are generated:
 
@@ -171,7 +171,7 @@ Each training run contains:
 
 ---
 
-## 🧪 Running Tests
+## Running Tests
 
 pytest -q
 
@@ -184,7 +184,7 @@ Tests verify:
 
 ---
 
-## 🧮 Kaggle Submission Mode
+## Kaggle Submission Mode
 
 Generate Kaggle submission files using saved predictions.
 
@@ -202,7 +202,7 @@ Outputs are saved to: `artifacts/submissions/`
 
 ---
 
-## 🏭 Production / Registry Prediction Mode
+## Production / Registry Prediction Mode
 
 Batch scoring using registry models and aliases.
 
@@ -225,7 +225,7 @@ Each run produces:
 
 ---
 
-## 🔍 Feature Importance Analysis
+##  Feature Importance Analysis
 
 Extract feature importance from registry models.
 
@@ -248,14 +248,10 @@ artifacts/reports/feature_importance/
 
 ---
 
-## 📉 Error Analysis (Interactive)
-
-Open Jupyter:
-jupyter notebook
+## Error Analysis 
 
 
-Then explore:
-`notebooks/02_model_analysis/error_analysis_oof_interactive.ipynb`
+Location: `notebooks/02_model_analysis/error_analysis_oof_interactive.ipynb`
 
 Includes:
 - residual diagnostics
@@ -264,7 +260,7 @@ Includes:
 
 ---
 
-## 📈 Exploratory Data Analysis (EDA)
+## Exploratory Data Analysis (EDA)
 
 EDA is intentionally separated from the training pipeline.
 
@@ -274,7 +270,19 @@ Can be viewed directly on GitHub or run locally.
 
 ---
 
-## 🏆 Dataset
+---
+
+## Feature Importance Viewer
+
+For exploratory analysis and presentation, the repository also includes an interactive notebook:
+
+notebooks/02_model_analysis/feature_importance_viewer.ipynb
+
+The visualization is ensemble-aware and reflects feature importance aggregated at the model level rather than from a single estimator.
+
+---
+
+## Dataset
 
 Kaggle: House Prices – Advanced Regression Techniques
 
@@ -283,7 +291,7 @@ Kaggle: House Prices – Advanced Regression Techniques
 
 ---
 
-## ✨ Notes
+## Notes
 
 - This project prioritizes ML system design, correctness, and reproducibility over leaderboard tuning.
 - All notebooks are optional for running the pipeline and included for transparency.
@@ -291,6 +299,6 @@ Kaggle: House Prices – Advanced Regression Techniques
 
 ---
 
-## 📬 Contact
+## Contact
 
 Questions, suggestions, or improvements are welcome — feel free to open an issue.
