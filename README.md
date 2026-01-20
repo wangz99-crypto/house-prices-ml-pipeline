@@ -238,10 +238,13 @@ python analysis/feature_importance.py
 python analysis/feature_importance.py --model lgbm --run-id <run_id> --topk 30
 
 ### Outputs
+
+```
 artifacts/reports/feature_importance/
 ├── <model>__<run_id>__top30.csv
 ├── <model>__<run_id>__top30.png
 └── <model>__<run_id>__meta.json
+```
 
 ---
 
