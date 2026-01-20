@@ -20,7 +20,7 @@ def main(seed=42, n_splits=3):
     y = np.log1p(df["SalePrice"].values)
     X = df.drop(columns=["SalePrice"])
 
-    # 为了让测试稳定：只用“最稳的做法”
+    
     # 1) one-hot
     X = pd.get_dummies(X, dummy_na=True)
     X = X.fillna(0)
@@ -44,7 +44,7 @@ def main(seed=42, n_splits=3):
         "model": "Ridge(alpha=10.0)",
         "cv": {"n_splits": n_splits, "seed": seed},
         "rmse": score,
-        "tolerance": 0.015,  # 允许变差的幅度（你可以调）
+        "tolerance": 0.015,  # Allowable range of variation
     }
 
     out_path = ROOT / "tests" / "baselines" / "perf_baseline.json"
