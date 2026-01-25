@@ -133,8 +133,11 @@ house-prices-ml-pipeline/
 conda create -n hp_clean python=3.10 -y
 conda activate hp_clean
 
+### 2.Clone and enter project root
+git clone https://github.com/wangz99-crypto/house-prices-ml-pipeline.git
+cd house-prices-ml-pipeline
 
-### 2. Install dependencies
+### 3. Install dependencies
 
 pip install -r requirements.txt
 
