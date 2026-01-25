@@ -121,6 +121,7 @@ house-prices-ml-pipeline/
 ├── Makefile.mak # Optional Make interface (non-Windows friendly)
 ├── pytest.ini
 ├── requirements.txt
+├── data_description.txt
 └── README.md
 ```
 
@@ -348,8 +349,10 @@ aggregated at the model level rather than from a single estimator.
 Kaggle: House Prices – Advanced Regression Techniques
 
 - Target variable: `SalePrice`
-- Training performed in log-space: `log1p(SalePrice)`
-
+- Training performed in log-space: `log1p(SalePrice)
+  `
+**note:**  Original feature definitions and our preprocessing details (missing-value handling + feature engineering) are documented in:
+  `docs/data_description.txt`
 ---
 
 ## Notes
