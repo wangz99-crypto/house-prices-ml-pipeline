@@ -147,6 +147,19 @@ pip install -r requirements.txt
 LightGBM / XGBoost are often easier to install via conda:
 conda install -c conda-forge lightgbm xgboost -y
 
+### 4 Data
+
+This project uses the Kaggle House Prices dataset.
+
+Download:
+
+https://www.kaggle.com/c/house-prices-advanced-regression-techniques/data
+
+Place files under:
+
+data/raw/train.csv
+
+data/raw/test.csv
 
 ---
 
