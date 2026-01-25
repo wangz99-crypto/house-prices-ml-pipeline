@@ -343,18 +343,17 @@ The visualization is ensemble-aware and reflects feature importance
 aggregated at the model level rather than from a single estimator.
 
 ---
-
 ## Dataset
 
 Kaggle: House Prices – Advanced Regression Techniques
 
 - Target variable: `SalePrice`
 - Training performed in log-space: `log1p(SalePrice)
-  `
-**note:**  Original feature definitions and our preprocessing details (missing-value handling + feature engineering) are documented in:
-  `docs/data_description.txt`
----
+  
+Original feature definitions and our preprocessing details (missing-value handling + feature engineering) are documented in:
+`docs/data_description.txt`
 
+---
 ## Notes
 
 - This project prioritizes ML system design, correctness, and reproducibility
