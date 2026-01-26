@@ -130,24 +130,25 @@ house-prices-ml-pipeline/
 ## Setup & Installation
 
 ### 1. Create a clean environment (recommended)
-
+```
 - conda create -n hp_clean python=3.10 -y
 - conda activate hp_clean
-
+```
 ### 2.Clone and enter project root
-
+```
 - git clone https://github.com/wangz99-crypto/house-prices-ml-pipeline.git
 - cd house-prices-ml-pipeline
-
+```
 ### 3. Install dependencies
-
+```
 pip install -r requirements.txt
-
+```
 
 **Windows note:**  
 LightGBM / XGBoost are often easier to install via conda:
+```
 conda install -c conda-forge lightgbm xgboost -y
-
+```
 ### 4 Data
 
 This project uses the Kaggle House Prices dataset.
@@ -167,12 +168,13 @@ data/raw/test.csv
 ## Training Models
 
 ### Train a single model
-
+```
 python -m src.train --model ridge
-
+```
 ### Train all models
+```
 python -m src.train --model all
-
+```
 ### Common options
 
 ```
@@ -216,8 +218,9 @@ Each training run contains:
 
 ## Running Tests
 
+```
 pytest -q
-
+```
 
 Tests verify:
 
@@ -237,9 +240,11 @@ Generate Kaggle submission files using saved predictions.
 
 ### Single model
 
+```
 python -m src.predict kaggle --model lgbm
-
+```
 ### Ensemble methods
+
 ```
 python -m src.predict kaggle --ensemble blend_mean
 python -m src.predict kaggle --ensemble blend_weighted
