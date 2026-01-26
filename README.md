@@ -255,15 +255,20 @@ Batch scoring using registry models and aliases.
 
 ### Family-level selectors
 
-python -m src.predict prod --model-id ridge/latest --input data/new_data.csv
-python -m src.predict prod --model-id ridge/best --input data/new_data.csv
-python -m src.predict prod --model-id ridge/production --input data/new_data.csv
+```
+- python -m src.predict prod --model-id ridge/latest --input data/new_data.csv
+- python -m src.predict prod --model-id ridge/best --input data/new_data.csv
+- python -m src.predict prod --model-id ridge/production --input data/new_data.csv
+
+```
 
 
 ### Global selectors (across all models)
 
+```
 python -m src.predict prod --model-id global/latest --input data/new_data.csv
 python -m src.predict prod --model-id global/best --input data/new_data.csv
+```
 
 
 Each run produces:
@@ -298,8 +303,10 @@ python analysis/feature_importance.py
 
 ### Specific model & run
 
+```
 python analysis/feature_importance.py --model lgbm --run-id <run_id> --topk 30
-
+```
+---
 
 ### Outputs
 
@@ -307,8 +314,6 @@ artifacts/reports/feature_importance/
 ├── <model>__<run_id>top30.csv
 ├── <model><run_id>top30.png
 └── <model><run_id>__meta.json
-
----
 
 ---
 
@@ -339,7 +344,9 @@ Future CI checks can ensure that updates do not degrade model quality.
 
 Create a baseline:
 
+```
 python -m tools.make_perf_baseline --model voting_mean
+```
 
 
 Baselines are stored under:
@@ -353,10 +360,12 @@ training-run fingerprint (data_fingerprint.json).
 
 Incoming datasets can be compared offline:
 
+```
 python -m tools.check_drift 
   --ref-fingerprint artifacts/registry/voting_mean/<run_id>/data_fingerprint.json 
   --current-csv data/raw/test.csv 
   --out artifacts/reports/drift_report.json
+```
 
 
 This provides a minimal drift safeguard without requiring external monitoring services.
@@ -372,9 +381,9 @@ The registry tracks all timestamped runs and maintains aliases such as:
 - production
 
 Inspect registry status:
-
+```
 python -m src.registry_status
-
+```
 Example output includes:
 
 global best model across families
