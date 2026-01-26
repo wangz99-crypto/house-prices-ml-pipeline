@@ -240,10 +240,11 @@ Generate Kaggle submission files using saved predictions.
 python -m src.predict kaggle --model lgbm
 
 ### Ensemble methods
-
+```
 python -m src.predict kaggle --ensemble blend_mean
 python -m src.predict kaggle --ensemble blend_weighted
 python -m src.predict kaggle --ensemble stack
+```
 
 
 Outputs are saved to: `artifacts/submissions/`
