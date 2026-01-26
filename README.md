@@ -308,8 +308,78 @@ artifacts/reports/feature_importance/
 ├── <model><run_id>top30.png
 └── <model><run_id>__meta.json
 
+---
 
 ---
+
+## Reliability & MLOps Guardrails (Production-Inspired)
+
+Beyond model accuracy, this project includes lightweight engineering safeguards
+to ensure the pipeline remains stable under refactoring, data changes, or future extensions.
+
+### 1. Model Contracts (Golden Prediction Tests)
+
+Each model family can store a small set of **golden input rows** along with an
+acceptable prediction range.
+
+These contracts ensure that future code changes do not silently break model behavior.
+
+Generate a contract:
+
+```
+python -m tools.make_contract --model voting_mean
+```
+Contracts are stored under:
+tests/contracts/<model>_contract.json
+
+### 2. Performance Regression Baselines
+
+A performance baseline records the expected RMSE of a model run.
+Future CI checks can ensure that updates do not degrade model quality.
+
+Create a baseline:
+
+python -m tools.make_perf_baseline --model voting_mean
+
+
+Baselines are stored under:
+
+tests/baselines/perf_baseline.json
+
+### 3. Data Drift Fingerprint Checks
+
+To prevent accidental dataset mismatches, each registry run stores a
+training-run fingerprint (data_fingerprint.json).
+
+Incoming datasets can be compared offline:
+
+python -m tools.check_drift 
+  --ref-fingerprint artifacts/registry/voting_mean/<run_id>/data_fingerprint.json 
+  --current-csv data/raw/test.csv 
+  --out artifacts/reports/drift_report.json
+
+
+This provides a minimal drift safeguard without requiring external monitoring services.
+
+### 4. Registry Inspection & Aliasing
+
+The registry tracks all timestamped runs and maintains aliases such as:
+
+- latest
+
+- best
+
+- production
+
+Inspect registry status:
+
+python -m src.registry_status
+
+Example output includes:
+
+global best model across families
+
+per-family latest/best candidates
 
 ## Error Analysis
 
@@ -351,7 +421,7 @@ Kaggle: House Prices – Advanced Regression Techniques
 - Training performed in log-space: `log1p(SalePrice)
   
 Original feature definitions and our preprocessing details (missing-value handling + feature engineering) are documented in:
-`docs/data_description.txt`
+`data_description.txt`
 
 ---
 ## Notes
