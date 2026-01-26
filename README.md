@@ -175,11 +175,12 @@ python -m src.train --model all
 
 ### Common options
 
+```
 --seed <int> # random seed (default: 42)
 --folds <int> # number of CV folds (default: 5)
 --data-dir <path> # custom directory containing train.csv/test.csv
 --no-export-compat-model # disable artifacts/current/<model>.joblib
-
+```
 
 ---
 
@@ -310,10 +311,12 @@ python analysis/feature_importance.py --model lgbm --run-id <run_id> --topk 30
 
 ### Outputs
 
+```
 artifacts/reports/feature_importance/
 ├── <model>__<run_id>top30.csv
 ├── <model><run_id>top30.png
 └── <model><run_id>__meta.json
+```
 
 ---
 
