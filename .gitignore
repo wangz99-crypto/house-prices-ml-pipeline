@@ -68,3 +68,15 @@ artifacts/
 !artifacts/reports/metrics.csv
 !artifacts/reports/cv_summary.json
 !artifacts/reports/*_metrics.json
+
+
+# generated artifacts
+artifacts_demo/
+app/artifacts_demo/
+artifacts/
+data/raw/
+
+# large binaries
+**/*.joblib
+**/*.npy
+
