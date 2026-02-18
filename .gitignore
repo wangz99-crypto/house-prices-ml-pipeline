@@ -78,5 +78,10 @@ artifacts/
 !artifacts_demo/registry/xgb/**/model.joblib
 !artifacts_demo/registry/lgbm/**/model.joblib
 
+# demo 'current' snapshots are always forbidden
+artifacts_demo/current/
 
-
+# forbid heavy model families in demo (keep registry metadata, but never joblib)
+artifacts_demo/registry/extratrees/**/model.joblib
+artifacts_demo/registry/stacking/**/model.joblib
+artifacts_demo/registry/voting_mean/**/model.joblib
