@@ -1,0 +1,5 @@
+{
+  "seed": 42,
+  "n_splits": 5,
+  "model_name": "xgb"
+}

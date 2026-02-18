@@ -1,0 +1,12 @@
+{
+  "best": {
+    "model_name": "voting_mean",
+    "run_id": "2026-02-06_171206",
+    "cv_rmse": 0.12705125394626643
+  },
+  "latest": {
+    "model_name": "voting_mean",
+    "run_id": "2026-02-06_171206",
+    "cv_rmse": 0.12705125394626643
+  }
+}

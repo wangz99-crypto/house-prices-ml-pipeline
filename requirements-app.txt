@@ -1,0 +1,10 @@
+streamlit
+pandas
+numpy
+matplotlib
+scikit-learn
+joblib
+xgboost
+lightgbm
+statsmodels
+pillow

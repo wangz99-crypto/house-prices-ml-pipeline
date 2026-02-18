@@ -70,13 +70,13 @@ artifacts/
 !artifacts/reports/*_metrics.json
 
 
-# generated artifacts
-artifacts_demo/
-app/artifacts_demo/
-artifacts/
-data/raw/
+# Ignore all joblib by default
+*.joblib
 
-# large binaries
-**/*.joblib
-**/*.npy
+# Allow demo models only
+!artifacts_demo/registry/ridge/**/model.joblib
+!artifacts_demo/registry/xgb/**/model.joblib
+!artifacts_demo/registry/lgbm/**/model.joblib
+
+
 
