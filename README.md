@@ -1,10 +1,44 @@
 # House Prices ML Pipeline
 
+![CI](https://github.com/wangz99-crypto/house-prices-ml-pipeline/actions/workflows/ci.yml/badge.svg)
+
 **End-to-End Machine Learning Pipeline with Cross-Validation, Model Registry, Ensembling, Feature Importance, Error Analysis, and Reproducibility**
 
 > **Goal:** demonstrate how a Kaggle-style regression problem can be engineered into a reproducible, testable, production-inspired machine learning system.
 
 ---
+
+## Live Demo (Streamlit)
+
+A lightweight demo version of the app is deployed on Streamlit Community Cloud:
+
+- 🚀 **Demo App:** [APP Link](https://house-prices-ml-pipeline-nui9um72mmpod6g5mtsx3i.streamlit.app/)
+
+This demo runs in **demo mode** using prebuilt artifacts under `artifacts_demo/` (no Kaggle dataset required).
+
+## Demo Walkthrough Guide
+
+To explore the system interactively:
+
+1. Navigate to **Live Prediction**  
+   - Enter example housing features  
+   - Observe model outputs in real time
+
+2. Visit **Model Behavior**  
+   - Inspect feature importance  
+   - Compare model performance across families
+
+3. Open **Model Registry**  
+   - Review versioned training runs  
+   - Inspect evaluation metrics and run lineage
+
+4. Explore **Reliability Controls**  
+   - Data drift monitoring  
+   - Prediction contract validation
+
+This demo is intended to illustrate how predictive models
+can be integrated into a structured lifecycle —
+from experimentation to governed deployment.
 
 ## Project Overview
 
@@ -23,6 +57,62 @@ Rather than optimizing purely for leaderboard performance, the project focuses o
 The intent is to treat model training as a **system**, not a one-off experiment.
 
 ---
+## Deployment Perspective (Production-Inspired)
+
+Although this project is based on a public regression dataset,  
+its architecture is designed to resemble a lightweight deployable ML scoring service.
+
+If adapted for organizational use (e.g., property pricing estimation,
+cost forecasting, or risk scoring), the following extensions would enable
+production-style operation:
+
+- **Cloud artifact storage**
+  - Replace local registry with object storage (e.g., AWS S3 / GCS)
+  - Enable centralized model access across environments
+
+- **Scheduled batch scoring**
+  - Integrate with workflow orchestration tools (e.g., Airflow / Prefect)
+  - Automatically score new records on a daily / weekly basis
+
+- **Prediction lineage tracking**
+  - Persist prediction metadata:
+    - resolved model alias
+    - training data fingerprint
+    - prediction timestamp
+  - Support auditability and reproducibility in regulated contexts
+
+- **Model performance monitoring**
+  - Track live prediction distributions vs. training reference
+  - Detect potential data drift without retraining immediately
+
+- **Safe model promotion**
+  - Promote new training runs from:
+    - `staging` → `production`
+  - without modifying downstream scoring pipelines
+
+Because the system already separates:
+
+- training pipelines  
+- model registry  
+- prediction interfaces  
+- artifact storage  
+
+most production infrastructure could be added **without refactoring core modeling code**.
+
+
+## Potential Application Scenarios
+
+The same system pattern can be adapted to support:
+
+- property price estimation
+- insurance risk scoring
+- equipment cost forecasting
+- customer lifetime value estimation
+- operational demand prediction
+
+In these contexts, the registry + alias mechanism can serve as a
+lightweight governance layer between model retraining and business-facing
+prediction services.
 
 ## Key Features
 
@@ -77,6 +167,8 @@ providing versioning, lineage, and safe model promotion without external service
 - Deterministic CV splits and seeds
 - Explicit artifact structure
 - Unit tests validating model artifacts and prediction consistency
+- Dependency separation between runtime (Streamlit demo) and training/CI environments
+
 
 ---
 
@@ -84,45 +176,133 @@ providing versioning, lineage, and safe model promotion without external service
 
 ```
 house-prices-ml-pipeline/
-├── data/
-│ └── raw/ # Kaggle train.csv / test.csv (gitignored)
-├── src/
-│ ├── train.py # Training entrypoint + registry integration
-│ ├── predict.py # Kaggle + production-style prediction CLI
-│ ├── pipelines.py # Model + preprocessing pipelines
-│ ├── transformers.py # Custom feature engineering & missing handlers
-│ ├── evaluate.py # KFold OOF evaluation logic
-│ ├── ensemble.py # Blending / stacking utilities
-│ ├── registry.py # Model registry, aliases, fingerprints
-│ ├── registry_status.py # Registry inspection helpers
-│ ├── data.py # Dataset loading utilities
-│ └── config.py # Centralized path configuration
 ├── analysis/
-│ └── feature_importance.py # Registry-aware feature importance extraction
+│   └── feature_importance.py          # Registry-aware feature importance extraction
+├── app/                               # Full app (local / full artifacts)
+│   ├── app.py
+│   ├── registry_io.py
+│   ├── lib/
+│   │   ├── notebook_links.py
+│   │   ├── ui_models.py
+│   │   ├── ui_style.py
+│   │   └── ui_text.py
+│   └── pages/
+│       ├── 1_Overview.py
+│       ├── 2_Data_Understanding.py
+│       ├── 3_Live_Prediction.py
+│       ├── 4_Model_Behavior.py
+│       ├── 5_Model_Registry.py
+│       ├── 6_Error_Analysis.py
+│       ├── 7_Data_Drift.py
+│       ├── 8_Model_Contract.py
+│       └── 9_Analysis_Experiments.py
+├── app_demo/                          # Streamlit Cloud demo app (lightweight)
+│   ├── app_demo.py
+│   ├── registry_io_demo.py
+│   ├── lib/
+│   │   ├── notebook_links.py
+│   │   ├── ui_models.py
+│   │   ├── ui_style.py
+│   │   └── ui_text.py
+│   └── pages/
+│       ├── 1_Overview.py
+│       ├── 2_Data_Profiling.py
+│       ├── 3_Live_Prediction.py
+│       ├── 4_Model_Evaluation.py
+│       ├── 5_Model_Registry.py
+│       ├── 6_Error_Analysis.py
+│       ├── 7_Drift_Monitoring.py
+│       ├── 8_Contract_Validation.py
+│       └── 9_System_Summary.py
+├── artifacts_demo/                    # Prebuilt demo artifacts committed for Cloud
+│   ├── registry/
+│   │   ├── _global/aliases.json
+│   │   ├── ridge/
+│   │   │   ├── aliases.json
+│   │   │   └── <run_id>/
+│   │   │       ├── model.joblib
+│   │   │       ├── metrics.json
+│   │   │       ├── oof.npy
+│   │   │       ├── test_pred.npy
+│   │   │       ├── feature_columns.json
+│   │   │       ├── defaults.json
+│   │   │       ├── train_args.json
+│   │   │       ├── data_fingerprint.json
+│   │   │       └── pipeline_repr.txt
+│   │   ├── lgbm/ ...                  # same layout
+│   │   └── xgb/  ...                  # same layout
+│   └── reports/
+│       ├── model_performance_summary.csv
+│       ├── feature_importance/
+│       │   ├── ridge__<run_id>__top30.csv
+│       │   ├── lgbm__<run_id>__top30.csv
+│       │   └── xgb__<run_id>__top30.csv
+│       └── figures/
+│           ├── eda_price_distribution.png
+│           ├── model_comparison_stage1.png
+│           ├── model_comparison_stage2.png
+│           └── feat_importance_top20__*.png
+├── data/
+│   └── raw/                           # Kaggle train.csv / test.csv (gitignored)
 ├── notebooks/
-│ ├── 00_experiments_raw/ # Early exploratory experiments
-│ ├── 01_eda/
-│ │ └── House_EDA.ipynb
-│ └── 02_model_analysis/
-│ ├── error_analysis_oof_interactive.ipynb
-│ └── feature_importance_viewer.ipynb
+│   ├── 00_experiments_raw/House_Prices_Experiments.ipynb
+│   ├── 01_eda/House_EDA.ipynb
+│   └── 02_model_analysis/
+│       ├── error_analysis_oof_interactive.ipynb
+│       └── feature_importance_viewer.ipynb
+├── src/                               # Core ML pipeline (train/predict/registry)
+│   ├── train.py
+│   ├── predict.py
+│   ├── pipelines.py
+│   ├── transformers.py
+│   ├── evaluate.py
+│   ├── ensemble.py
+│   ├── registry.py
+│   ├── registry_status.py
+│   ├── data.py
+│   ├── config.py
+│   └── __init__.py
 ├── tests/
-│ ├── unit/ # Unit, regression & contract tests (pytest)
-│ ├── data/ # Small sampled datasets for CI
-│ ├── contracts/ # Model prediction contracts (golden tests)
-│ └── baselines/ # Performance baselines (RMSE)
-├── tools/
-│ ├── make_sample_data.py # Generate CI-safe sample datasets
-│ ├── make_perf_baseline.py # Generate performance baseline
-│ ├── make_contract.py # Generate model prediction contracts
-│ ├── check_drift.py # Offline data drift detection
-│ └── promote.py # Registry alias promotion helper
-├── .github/workflows/ci.yml # GitHub Actions CI
-├── Makefile.mak # Optional Make interface (non-Windows friendly)
+│   ├── baselines/perf_baseline.json   # Performance regression guardrail
+│   ├── contracts/                     # Golden prediction contracts
+│   │   ├── ridge_contract.json
+│   │   ├── lgbm_contract.json
+│   │   ├── xgb_contract.json
+│   │   ├── extratrees_contract.json
+│   │   ├── voting_mean_contract.json
+│   │   └── stacking_contract.json
+│   ├── data/                          # CI-safe sampled datasets
+│   │   ├── sample_train.csv
+│   │   ├── sample_test.csv
+│   │   └── sample_data_meta.json
+│   └── unit/                          # Pytest unit/regression/consistency tests
+│       ├── test_smoke.py
+│       ├── test_model_artifact.py
+│       ├── test_model_contract_generic.py
+│       ├── test_model_performance.py
+│       ├── test_prediction_consistency.py
+│       ├── test_prediction_consistency_tree_models.py
+│       └── test_run_one_artifact_consistency.py
+├── tools/                             # Helpers for demo artifacts & safeguards
+│   ├── make_sample_data.py
+│   ├── make_perf_baseline.py
+│   ├── make_contract.py
+│   ├── check_drift.py
+│   ├── promote.py
+│   ├── make_app_figures.py
+│   └── make_demo_schema.py
+├── .github/workflows/ci.yml
+├── .gitattributes
+├── .gitignore
+├── Makefile.mak
 ├── pytest.ini
-├── requirements.txt
+├── requirements.txt                   # forwards to requirements-app.txt (Cloud)
+├── requirements-app.txt               # demo/runtime dependencies
+├── requirements-train.txt             # training + CI dependencies
+├── runtime.txt                        # pin python for Streamlit Cloud
 ├── data_description.txt
 └── README.md
+
 ```
 
 ---
@@ -140,8 +320,16 @@ house-prices-ml-pipeline/
 - cd house-prices-ml-pipeline
 ```
 ### 3. Install dependencies
+
+For Streamlit demo (lightweight runtime):
+
 ```
 pip install -r requirements.txt
+```
+For training, CI, or full pipeline development:
+
+```
+pip install -r requirements-train.txt
 ```
 
 **Windows note:**  
@@ -276,20 +464,6 @@ Batch scoring using registry models and aliases.
 python -m src.predict prod --model-id global/latest --input data/new_data.csv
 python -m src.predict prod --model-id global/best --input data/new_data.csv
 ```
-
-
-Each run produces:
-
-- predictions CSV
-- metadata JSON (resolved model id, data fingerprint, lineage)
-
----
-
-## Feature Importance Analysis
-
-Extract feature importance from registry models.
-
-### Default: global best model
 
 
 Each run produces:
@@ -442,6 +616,7 @@ Original feature definitions and our preprocessing details (missing-value handli
 `data_description.txt`
 
 ---
+
 ## Notes
 
 - This project prioritizes ML system design, correctness, and reproducibility
