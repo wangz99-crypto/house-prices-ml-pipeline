@@ -311,13 +311,13 @@ house-prices-ml-pipeline/
 
 ### 1. Create a clean environment (recommended)
 ```
-- conda create -n hp_clean python=3.10 -y
-- conda activate hp_clean
+conda create -n hp_clean python=3.10 -y
+conda activate hp_clean
 ```
 ### 2.Clone and enter project root
 ```
-- git clone https://github.com/wangz99-crypto/house-prices-ml-pipeline.git
-- cd house-prices-ml-pipeline
+git clone https://github.com/wangz99-crypto/house-prices-ml-pipeline.git
+cd house-prices-ml-pipeline
 ```
 ### 3. Install dependencies
 
@@ -451,9 +451,9 @@ Batch scoring using registry models and aliases.
 ### Family-level selectors
 
 ```
-- python -m src.predict prod --model-id ridge/latest --input data/new_data.csv
-- python -m src.predict prod --model-id ridge/best --input data/new_data.csv
-- python -m src.predict prod --model-id ridge/production --input data/new_data.csv
+python -m src.predict prod --model-id ridge/latest --input data/new_data.csv
+python -m src.predict prod --model-id ridge/best --input data/new_data.csv
+python -m src.predict prod --model-id ridge/production --input data/new_data.csv
 
 ```
 
@@ -493,9 +493,10 @@ python analysis/feature_importance.py --model lgbm --run-id <run_id> --topk 30
 
 ```
 artifacts/reports/feature_importance/
-├── <model>__<run_id>top30.csv
-├── <model><run_id>top30.png
-└── <model><run_id>__meta.json
+├── <model>__<run_id>__top30.csv
+├── <model>__<run_id>__top30.png
+└── <model>__<run_id>__meta.json
+
 ```
 
 ---
@@ -610,7 +611,7 @@ aggregated at the model level rather than from a single estimator.
 Kaggle: House Prices – Advanced Regression Techniques
 
 - Target variable: `SalePrice`
-- Training performed in log-space: `log1p(SalePrice)
+- Training performed in log-space: `log1p(SalePrice)`
   
 Original feature definitions and our preprocessing details (missing-value handling + feature engineering) are documented in:
 `data_description.txt`
