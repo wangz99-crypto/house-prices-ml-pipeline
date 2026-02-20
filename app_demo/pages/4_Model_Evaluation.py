@@ -2,15 +2,16 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import List, Tuple
+import re
+
 import numpy as np
 import pandas as pd
 import streamlit as st
 import joblib
-import re
 
 # =========================
-# Optional dependencies
+# Optional dependencies (silent fallbacks)
 # =========================
 try:
     import statsmodels.api as sm
@@ -33,10 +34,10 @@ except Exception:
     _HAS_SKLEARN_EXTRAS = False
 
 # =========================
-# Demo policy: allowlist + size guard
+# Runtime constraints (kept internal, not shown as "policy")
 # =========================
-ALLOWED_MODELS = {"ridge", "xgb", "lgbm"}     # ✅ only these can be joblib.load()
-MAX_MODEL_MB = 50.0                          # ✅ demo safety guard (avoid 300MB artifacts)
+ALLOWED_MODELS = {"ridge", "xgb", "lgbm"}  # only these may be loaded interactively (demo-safe)
+MAX_MODEL_MB = 50.0
 
 # =========================
 # Page config
@@ -44,14 +45,17 @@ MAX_MODEL_MB = 50.0                          # ✅ demo safety guard (avoid 300M
 st.set_page_config(page_title="Model Behavior", layout="wide")
 st.title("🧠 Model Behavior")
 st.caption(
-    "Product-friendly interpretation of model performance and drivers. "
-    "Includes two-stage selection, feature importance, and Ridge interpretation layers."
+    "See which model families perform best, what features matter most, and how to interpret a readable linear baseline (Ridge). "
+    "This page prioritizes clarity for non-technical viewers while preserving evaluation rigor."
 )
 
-st.info(
-    f"Demo load policy: joblib.load() is allowed only for {sorted(ALLOWED_MODELS)} "
-    f"and artifacts must be <= {MAX_MODEL_MB:.0f} MB. All other families are report-only."
-)
+# =========================
+# Sidebar: optional debug
+# =========================
+with st.sidebar:
+    st.markdown("## Model Behavior")
+    DEBUG = st.toggle("Debug mode", value=False, help="Show detailed error traces for troubleshooting.")
+    st.caption("Tip: For a quick tour, scan sections 1 → 2, then open 3 only if you want deeper interpretation.")
 
 # =========================
 # Resolve artifact paths
@@ -68,16 +72,15 @@ SUMMARY_CSV = REPORTS / "model_performance_summary.csv"
 REGISTRY_DIR = DEMO / "registry"
 
 if not DEMO.exists():
-    st.error("❌ artifacts_demo directory not found.")
+    st.error("Required demo assets are not available in this build.")
     st.stop()
 
 # ============================================================
-# 0) Product-friendly feature dictionary (Ames + your engineered layer)
+# Feature dictionary (Ames + engineered layer)
 # ============================================================
-
 AMES_DESC = {
-    "MSSubClass": "Dwelling type code (1-story, 2-story, duplex, PUD, etc.).",
-    "MSZoning": "Zoning classification of the property (RL/RM/FV/etc.).",
+    "MSSubClass": "Dwelling type code (1-story, 2-story, duplex, etc.).",
+    "MSZoning": "Zoning classification of the property.",
     "LotFrontage": "Street frontage: linear feet of street connected to the lot.",
     "LotArea": "Lot size in square feet.",
     "Street": "Road access type (paved vs gravel).",
@@ -92,11 +95,11 @@ AMES_DESC = {
     "Condition2": "Additional proximity condition (if multiple).",
     "BldgType": "Building type (single-family, townhouse, duplex...).",
     "HouseStyle": "House style (1Story, 2Story, SFoyer, SLvl...).",
-    "OverallQual": "Overall build quality rating (1–10; higher is better).",
-    "OverallCond": "Overall condition rating (1–10; higher is better).",
+    "OverallQual": "Overall build quality rating (1–10).",
+    "OverallCond": "Overall condition rating (1–10).",
     "YearBuilt": "Original construction year.",
     "YearRemodAdd": "Remodel/addition year (same as YearBuilt if never remodeled).",
-    "RoofStyle": "Roof style (gable, hip, flat...).",
+    "RoofStyle": "Roof style.",
     "RoofMatl": "Roof material.",
     "Exterior1st": "Primary exterior covering.",
     "Exterior2nd": "Secondary exterior covering (if multiple).",
@@ -130,16 +133,16 @@ AMES_DESC = {
     "KitchenAbvGr": "Kitchens above grade.",
     "KitchenQual": "Kitchen quality (Ex/Gd/TA/Fa/Po).",
     "TotRmsAbvGrd": "Total rooms above grade (excluding bathrooms).",
-    "Functional": "Overall home functionality (Typ, Min, Mod, Maj...).",
+    "Functional": "Overall home functionality.",
     "Fireplaces": "Number of fireplaces.",
     "FireplaceQu": "Fireplace quality (Ex/Gd/TA/Fa/Po/NA).",
-    "GarageType": "Garage location/type (attached, detached, none...).",
+    "GarageType": "Garage location/type.",
     "GarageYrBlt": "Garage build year.",
-    "GarageFinish": "Garage interior finish (Fin/RFn/Unf/NA).",
+    "GarageFinish": "Garage interior finish.",
     "GarageCars": "Garage capacity (# of cars).",
     "GarageArea": "Garage area in sq ft.",
-    "GarageQual": "Garage quality (Ex/Gd/TA/Fa/Po/NA).",
-    "GarageCond": "Garage condition (Ex/Gd/TA/Fa/Po/NA).",
+    "GarageQual": "Garage quality.",
+    "GarageCond": "Garage condition.",
     "PavedDrive": "Driveway paving (Y/P/N).",
     "WoodDeckSF": "Wood deck area in sq ft.",
     "OpenPorchSF": "Open porch area in sq ft.",
@@ -147,23 +150,23 @@ AMES_DESC = {
     "3SsnPorch": "Three-season porch area in sq ft.",
     "ScreenPorch": "Screen porch area in sq ft.",
     "PoolArea": "Pool area in sq ft.",
-    "PoolQC": "Pool quality (Ex/Gd/TA/Fa/NA).",
-    "Fence": "Fence quality (GdPrv/MnPrv/...).",
-    "MiscFeature": "Miscellaneous feature (elevator, shed, tennis court...).",
+    "PoolQC": "Pool quality.",
+    "Fence": "Fence quality.",
+    "MiscFeature": "Miscellaneous feature (shed, tennis court...).",
     "MiscVal": "Value of miscellaneous feature ($).",
     "MoSold": "Month sold (1–12).",
     "YrSold": "Year sold.",
-    "SaleType": "Type of sale (WD, New, COD, ...).",
-    "SaleCondition": "Sale condition (Normal, Partial, Abnorml...).",
+    "SaleType": "Type of sale.",
+    "SaleCondition": "Sale condition.",
 }
 
 ENGINEERED_DESC = {
     "HouseAge": "Engineered: house age at sale (YrSold − YearBuilt).",
-    "IsNewHouse": "Engineered: 1 if HouseAge ≤ 5 (new-ish home).",
+    "IsNewHouse": "Engineered: 1 if house is relatively new (e.g., age ≤ 5).",
     "RemodAge": "Engineered: years since remodel (YrSold − YearRemodAdd).",
     "IsRemodeled": "Engineered: 1 if remodeled (YearBuilt != YearRemodAdd).",
     "TotalSF": "Engineered: total footprint (basement + 1st + 2nd floors).",
-    "TotalBathrooms": "Engineered: total baths (Full + 0.5*Half + basement baths).",
+    "TotalBathrooms": "Engineered: total baths (Full + 0.5×Half + basement baths).",
     "TotalPorchSF": "Engineered: total porch area (open + enclosed + 3-season + screen).",
     "HasBasement": "Engineered: 1 if basement exists (TotalBsmtSF > 0).",
     "HasGarage": "Engineered: 1 if garage exists (GarageArea > 0).",
@@ -171,7 +174,7 @@ ENGINEERED_DESC = {
     "HasPool": "Engineered: 1 if pool exists (PoolArea > 0).",
     "HasPorch": "Engineered: 1 if any porch exists (TotalPorchSF > 0).",
     "HasDeck": "Engineered: 1 if deck exists (WoodDeckSF > 0).",
-    "HasMasonryVeneer": "Engineered: 1 if masonry veneer exists (MasVnrArea > 0).",
+    "HasMasonryVeneer": "Engineered: 1 if veneer exists (MasVnrArea > 0).",
     "LuxuryAmenityScore": "Engineered: simple luxury score (pool + veneer + deck + porch + fireplace).",
     "QualGrLiv": "Engineered: quality × living area (OverallQual × GrLivArea).",
     "QualTotalSF": "Engineered: quality × total area (OverallQual × TotalSF).",
@@ -180,7 +183,7 @@ ENGINEERED_DESC = {
     "IsLargeHouse": "Engineered: 1 if GrLivArea ≥ 2000 sq ft.",
     "IsLuxury": "Engineered: 1 if high quality AND large (OverallQual ≥ 8 and GrLivArea ≥ 2500).",
     "GrLivAreaBin": "Engineered: living area bucket (small / mid / large).",
-    "Neighborhood_Qual": "Engineered: Neighborhood combined with OverallQual (captures local premium by quality).",
+    "Neighborhood_Qual": "Engineered: neighborhood premium signal combined with quality.",
 }
 
 QUALITY_LEVEL = {
@@ -189,13 +192,12 @@ QUALITY_LEVEL = {
     "TA": "Typical/Average",
     "Fa": "Fair",
     "Po": "Poor",
-    "NA": "Not applicable / None",
+    "NA": "Not applicable / none",
 }
 YESNO_LEVEL = {"Y": "Yes", "N": "No"}
 
 
 def _strip_nested_prefix(name: str) -> str:
-    """Normalize sklearn names like num__LotArea -> LotArea."""
     s = str(name)
     while "__" in s:
         _, s = s.split("__", 1)
@@ -203,13 +205,6 @@ def _strip_nested_prefix(name: str) -> str:
 
 
 def describe_feature(name: str) -> str:
-    """
-    Product-friendly description for:
-    - base features
-    - engineered features
-    - *_log
-    - one-hot fields: Field_Level
-    """
     s = _strip_nested_prefix(name)
 
     if s in ENGINEERED_DESC:
@@ -218,9 +213,9 @@ def describe_feature(name: str) -> str:
     if s.endswith("_log"):
         base = s[:-4]
         base_h = AMES_DESC.get(base, f"{base} (raw field)")
-        return f"Engineered: log transform of {base} (reduces skew, stabilizes relationships). {base_h}"
+        return f"Engineered: log transform of {base}. {base_h}"
 
-    # One-hot: try split Field_Level
+    # One-hot: Field_Level
     if "_" in s:
         field, level = s.split("_", 1)
         if field in AMES_DESC:
@@ -235,11 +230,11 @@ def describe_feature(name: str) -> str:
         return AMES_DESC[s]
 
     if s.startswith("Has"):
-        return f"Engineered indicator for amenity presence: {s}."
+        return f"Engineered indicator for an amenity: {s}."
     if s.startswith("Is"):
-        return f"Engineered flag feature: {s}."
+        return f"Engineered flag: {s}."
     if s.endswith("Bin"):
-        return f"Engineered bucket feature: {s}."
+        return f"Engineered bucket: {s}."
 
     return f"Model feature: {s}."
 
@@ -256,7 +251,6 @@ def add_description_column(df: pd.DataFrame, feature_col: str = "feature") -> pd
 # Utilities: unwrap + split
 # =========================
 def _unwrap_estimator(obj: object):
-    """Unwrap wrapper objects (e.g., AsRegressor) down to a sklearn Pipeline or estimator."""
     cur = obj
     for _ in range(10):
         if hasattr(cur, "steps") and hasattr(cur, "named_steps"):
@@ -273,7 +267,6 @@ def _unwrap_estimator(obj: object):
 
 
 def _split_pipeline(obj: object):
-    """Return (preprocessor, estimator)."""
     pipe = _unwrap_estimator(obj)
     if hasattr(pipe, "steps") and hasattr(pipe, "named_steps"):
         est = pipe.steps[-1][1]
@@ -284,7 +277,6 @@ def _split_pipeline(obj: object):
 
 @st.cache_data(show_spinner=False)
 def _load_train_data(repo_root: Path) -> Tuple[pd.DataFrame, pd.Series]:
-    # ✅ demo-safe: prefer sample_train; raw only as local fallback
     p_sample = repo_root / "tests" / "data" / "sample_train.csv"
     p_raw = repo_root / "data" / "raw" / "train.csv"
 
@@ -293,11 +285,7 @@ def _load_train_data(repo_root: Path) -> Tuple[pd.DataFrame, pd.Series]:
     elif p_raw.exists():
         df = pd.read_csv(p_raw)
     else:
-        raise FileNotFoundError(
-            "Missing training dataset.\n"
-            f"Checked:\n- {p_sample}\n- {p_raw}\n\n"
-            "Demo build expects tests/data/sample_train.csv."
-        )
+        raise FileNotFoundError("Training dataset is not available in this build.")
 
     y = df["SalePrice"].astype(float)
     X = df.drop(columns=["SalePrice", "Id"], errors="ignore")
@@ -305,11 +293,6 @@ def _load_train_data(repo_root: Path) -> Tuple[pd.DataFrame, pd.Series]:
 
 
 def _get_shared_and_ct(pre):
-    """
-    Your ridge preprocessor structure:
-      pre = Pipeline([('shared', Pipeline([...MissingValueHandler, FeatureEngineerV2...])),
-                      ('prep', ColumnTransformer(...))])
-    """
     if pre is None or not hasattr(pre, "named_steps"):
         return None, None
     shared = pre.named_steps.get("shared")
@@ -318,7 +301,6 @@ def _get_shared_and_ct(pre):
 
 
 def _find_run_dirs(model_name: str) -> List[Path]:
-    # ✅ hard deny non-allowed models for any loader logic
     if model_name not in ALLOWED_MODELS:
         return []
     base = REGISTRY_DIR / model_name
@@ -330,28 +312,22 @@ def _find_run_dirs(model_name: str) -> List[Path]:
 
 
 @st.cache_data(show_spinner=False)
-def _load_latest_pipeline_and_run(demo_dir: Path, model_name: str):
-    # ✅ allowlist enforcement
+def _load_latest_pipeline_and_run(model_name: str):
     if model_name not in ALLOWED_MODELS:
-        raise ValueError(
-            f"Demo build only allows loading models: {sorted(ALLOWED_MODELS)}. Requested: {model_name}"
-        )
+        raise ValueError("This model family is not available for interactive inspection in this build.")
 
     run_dirs = _find_run_dirs(model_name)
     if not run_dirs:
-        raise FileNotFoundError(f"No runs found under registry/{model_name}/")
+        raise FileNotFoundError("No saved run is available for this model family.")
+
     run_dir = run_dirs[0]
     model_path = run_dir / "model.joblib"
     if not model_path.exists():
-        raise FileNotFoundError(f"Missing model.joblib in: {run_dir}")
+        raise FileNotFoundError("Saved model file is not available for this run.")
 
-    # ✅ size guard
     mb = model_path.stat().st_size / 1024 / 1024
     if mb > MAX_MODEL_MB:
-        raise RuntimeError(
-            f"Demo safety guard: {model_name} model is too large ({mb:.1f} MB > {MAX_MODEL_MB} MB).\n"
-            "This demo build intentionally excludes large ensembles."
-        )
+        raise RuntimeError("This model is not included for interactive loading in this build.")
 
     pipe = joblib.load(model_path)
     return pipe, run_dir
@@ -360,63 +336,65 @@ def _load_latest_pipeline_and_run(demo_dir: Path, model_name: str):
 def _normalize_stage(s: str) -> str:
     s0 = str(s).strip().lower().replace(" ", "")
     if s0 in {"stage1", "1", "s1"} or ("stage" in s0 and "1" in s0):
-        return "Stage1"
+        return "Stage 1"
     if s0 in {"stage2", "2", "s2"} or ("stage" in s0 and "2" in s0):
-        return "Stage2"
+        return "Stage 2"
     return str(s).strip()
 
 
+def _format_currency(x: float) -> str:
+    return f"${x:,.0f}"
+
+
 # ============================================================
-# 1) Model Comparison (productized)
+# 0) Demo note (align expectations)
 # ============================================================
-st.subheader("1) Model Comparison")
+st.info(
+    "Demo build note: this page can **interactively load and inspect** lightweight models (Ridge/XGB/LGBM) for speed and stability. "
+    "Full model evaluation (ExtraTrees/Voting/Stacking, etc.) is still reflected in the **comparison charts and tables**."
+)
+
+# ============================================================
+# 1) Model Comparison
+# ============================================================
+st.subheader("1) Model selection overview")
 
 st.markdown(
     """
-**What you’re seeing:** we don’t pick a model from a single lucky run.  
-Instead, we use a **two-stage selection** to balance **speed + stability + generalization**.
+This system uses a **two-stage selection** approach to reduce “lucky” results:
 
-- **Stage 1 (Screening):** quickly test many candidates → keep only the most promising ones  
-- **Stage 2 (Stability check):** re-test the top candidates with more randomness → pick the most reliable winner  
-- The winner is recorded in the **Model Registry** as `best` (and the newest run as `latest`)
+- **Stage 1 (Screening):** quickly tests many candidates and filters out weak configurations  
+- **Stage 2 (Stability):** re-tests the strongest candidates and selects the most consistent winner  
+- The chosen winner becomes the system’s default (**Best**) and the most recent run becomes (**Latest**)
 """
 )
 
-a1, a2, a3 = st.columns(3)
-with a1:
-    st.metric("Stage 1 goal", "Eliminate weak configs")
-with a2:
-    st.metric("Stage 2 goal", "Stability / robustness")
-with a3:
-    st.metric("Output", "Registry aliases: best/latest")
-
-# --- show figures if present ---
 c1, c2 = st.columns(2, gap="large")
 with c1:
     p = FIG_DIR / "model_comparison_stage1.png"
     if p.exists():
         st.image(str(p), use_container_width=True)
     else:
-        st.info("Stage1 figure not found. Run: python tools/make_app_figures.py")
+        st.info("Stage 1 comparison chart is not available in this build.")
 with c2:
     p = FIG_DIR / "model_comparison_stage2.png"
     if p.exists():
         st.image(str(p), use_container_width=True)
     else:
-        st.info("Stage2 figure not found. Run: python tools/make_app_figures.py")
+        st.info("Stage 2 comparison chart is not available in this build.")
 
-# --- lightweight “intuition card” for RMSE (demo-safe: no raw train dependency) ---
+# Quick intuition card (kept short, non-technical + safer wording)
 try:
     if SUMMARY_CSV.exists():
-        _, y_all = _load_train_data(REPO_ROOT)  # ✅ sample_train preferred
+        X_all, y_all = _load_train_data(REPO_ROOT)
         p50 = float(np.median(y_all))
 
-        df_sum = pd.read_csv(SUMMARY_CSV)
-        df_sum.columns = [c.strip() for c in df_sum.columns]
-        if "stage" in df_sum.columns:
-            df_sum["stage"] = df_sum["stage"].apply(_normalize_stage)
-        stage2 = df_sum[df_sum["stage"] == "Stage2"] if "stage" in df_sum.columns else df_sum
+        df_sum_all = pd.read_csv(SUMMARY_CSV)
+        df_sum_all.columns = [c.strip() for c in df_sum_all.columns]
+        if "stage" in df_sum_all.columns:
+            df_sum_all["stage"] = df_sum_all["stage"].apply(_normalize_stage)
 
+        stage2 = df_sum_all[df_sum_all.get("stage", "Stage 2") == "Stage 2"] if "stage" in df_sum_all.columns else df_sum_all
         if len(stage2) and "rmse_mean" in stage2.columns:
             best = stage2.sort_values("rmse_mean", ascending=True).iloc[0]
             e = float(best["rmse_mean"])
@@ -424,91 +402,124 @@ try:
             approx_usd = p50 * approx_pct
 
             st.info(
-                f"**RMSE intuition (for quick understanding):** "
-                f"best Stage2 RMSE ≈ **{e:.4f}** (log space). "
-                f"At a median-priced home (~**${p50:,.0f}**), that’s roughly an error scale of **±${approx_usd:,.0f}**. "
-                f"*(This is for intuition, not a guarantee.)*"
-            )
-except Exception:
-    pass
+                f"""
+**Quick intuition**
 
-# --- table moved into expander (advanced) ---
+Best Stage 2 RMSE ≈ **{e:.4f}** (log scale).
+
+For a median-priced home (~**{_format_currency(p50)}**),  
+this corresponds to a **rough error scale** on the order of **±{_format_currency(approx_usd)}**.
+
+*(Intuition aid only — not a guarantee.)*
+"""
+            )
+except Exception as e:
+    if DEBUG:
+        st.exception(e)
+
+st.success("Takeaway: Stage 2 prioritizes stability across repeated evaluation over a single best run.")
+
+# Evaluation table: default Stage 2 + Top 30, with optional full view
 if SUMMARY_CSV.exists():
     df_sum = pd.read_csv(SUMMARY_CSV)
     df_sum.columns = [c.strip() for c in df_sum.columns]
     if "stage" in df_sum.columns:
         df_sum["stage"] = df_sum["stage"].apply(_normalize_stage)
 
-    # keep it tidy: sort by stage then rmse
-    if {"stage", "rmse_mean"}.issubset(df_sum.columns):
-        df_sum = df_sum.sort_values(["stage", "rmse_mean"], ascending=[True, True])
-
-    with st.expander("Show evaluation table (advanced)"):
-        st.caption("Sorted by Stage then RMSE (lower is better). Showing top 30 rows per stage.")
+    with st.expander("Show evaluation table (details)"):
+        show_all = st.checkbox("Show all rows", value=False)
+        stage_filter = None
         if "stage" in df_sum.columns:
-            parts = []
-            for s in sorted(df_sum["stage"].unique()):
-                top = df_sum[df_sum["stage"] == s].head(30)
-                parts.append(top)
-            show_df = pd.concat(parts, axis=0) if parts else df_sum.head(60)
-        else:
-            show_df = df_sum.head(60)
-        st.dataframe(show_df, use_container_width=True)
+            stage_filter = st.selectbox("Stage filter", ["Stage 2 (recommended)", "Stage 1", "All stages"], index=0)
+        view = df_sum.copy()
+
+        if stage_filter == "Stage 2 (recommended)":
+            view = view[view["stage"] == "Stage 2"]
+        elif stage_filter == "Stage 1":
+            view = view[view["stage"] == "Stage 1"]
+
+        if {"stage", "rmse_mean"}.issubset(view.columns):
+            view = view.sort_values(["stage", "rmse_mean"], ascending=[True, True])
+
+        if not show_all:
+            view = view.head(30)
+
+        st.dataframe(view, use_container_width=True)
 
 st.divider()
 
 # ============================================================
-# 2) Feature Importance (Tree / Boosting Models) — exclude Ridge
+# 2) Feature Importance (Tree/Boosting)
 # ============================================================
-st.subheader("2) Feature Importance (Tree / Boosting Models)")
+st.subheader("2) What drives predictions (Feature importance)")
+
+st.markdown(
+    """
+These charts highlight the features that most influence model predictions in **tree/boosting** models.
+They help explain “what the model pays attention to” at a high level.
+"""
+)
 
 imgs = sorted(FIG_DIR.glob("feat_importance_top20__*.png"))
 names_all = [p.stem.replace("feat_importance_top20__", "") for p in imgs]
-
-# ✅ keep report-driven view but restrict to allowed families (excluding ridge)
 names = [n for n in names_all if (n.lower() in {"xgb", "lgbm"})]
 
 if not names:
-    st.info("No tree/boosting feature-importance figures found (xgb/lgbm).")
+    st.info("Feature-importance charts are not available in this build.")
 else:
-    model = st.selectbox("Select a model family", names, index=0)
+    model = st.selectbox("Model", names, index=0)  # friendlier than "family"
     p = FIG_DIR / f"feat_importance_top20__{model}.png"
     if p.exists():
         st.image(str(p), use_container_width=True)
 
-    # optional CSV table with descriptions
     csv_candidates = sorted(FI_DIR.glob(f"{model}__*__top30.csv"))
     if csv_candidates:
-        with st.expander("Show top features as a table (with descriptions)"):
+        with st.expander("Show top features as a table (with explanations)"):
             try:
                 df = pd.read_csv(csv_candidates[-1])
                 if "feature" in df.columns:
                     df = add_description_column(df, "feature")
                 st.dataframe(df.head(30), use_container_width=True)
             except Exception as e:
-                st.warning(f"Could not read importance CSV: {e}")
+                if DEBUG:
+                    st.exception(e)
+                st.info("Feature table is not available for this model in the current build.")
 
+st.success("Takeaway: size + quality signals tend to dominate, consistent with real-world housing pricing drivers.")
 st.divider()
 
 # ============================================================
-# 3) Linear Model (Ridge) — interpretation layers
+# 3) Ridge interpretation
 # ============================================================
-st.subheader("3) Linear Model (Ridge) — Interpretation Layers")
-st.caption(
-    "Ridge is interpreted differently from trees: we look at coefficients, a refit OLS layer, "
-    "and permutation importance (which measures error increase when a feature is shuffled)."
+st.subheader("3) Ridge model interpretation")
+
+st.markdown(
+    """
+Ridge is a linear baseline, so we interpret it differently:
+
+- **Coefficients:** direction and strength of influence (after preprocessing)
+- **Optional deeper views:** an OLS refit (interpretation aid) and permutation importance (slower)
+"""
 )
 
-DEMO_FAST = st.toggle("Fast demo mode (skip OLS + permutation importance)", value=True)
+FAST_VIEW = st.toggle("Quick view (recommended)", value=True)
 
 try:
-    ridge_pipe, _ridge_run_dir = _load_latest_pipeline_and_run(DEMO, "ridge")  # ✅ allowlisted + size-guarded
+    ridge_pipe, _ridge_run_dir = _load_latest_pipeline_and_run("ridge")
 except Exception as e:
-    st.error(f"Could not load Ridge run: {e}")
+    if DEBUG:
+        st.exception(e)
+    st.info("Ridge interpretation is not available in this build.")
     st.stop()
 
 pre, est = _split_pipeline(ridge_pipe)
-X, y = _load_train_data(REPO_ROOT)  # ✅ sample_train preferred
+try:
+    X, y = _load_train_data(REPO_ROOT)
+except Exception as e:
+    if DEBUG:
+        st.exception(e)
+    st.info("Training data is not available in this build.")
+    st.stop()
 
 # transform for interpretation layers
 try:
@@ -516,7 +527,9 @@ try:
     if hasattr(X_proc, "toarray"):
         X_proc = X_proc.toarray()
 except Exception as e:
-    st.error(f"Failed to preprocess training data for Ridge interpretation: {e}")
+    if DEBUG:
+        st.exception(e)
+    st.info("This build does not include the required preprocessing artifacts for Ridge interpretation.")
     st.stop()
 
 coef = np.asarray(getattr(est, "coef_", np.array([]))).ravel()
@@ -532,10 +545,11 @@ if ct is not None and hasattr(ct, "get_feature_names_out"):
 if final_feature_names is None or len(final_feature_names) != len(coef):
     final_feature_names = [f"f{i}" for i in range(len(coef))]
 
-# --- 3.1 Ridge coefficients ---
-st.markdown("### 3.1 Ridge coefficients (trained model)")
+# 3.1 Coefficients
+st.markdown("### 3.1 Strongest linear signals (coefficients)")
+
 if len(coef) == 0:
-    st.warning("Ridge coefficients not found on this estimator.")
+    st.info("Coefficient view is not available for this Ridge estimator.")
 else:
     coef_df = pd.DataFrame(
         {"feature": final_feature_names, "ridge_coef": coef, "abs_coef": np.abs(coef)}
@@ -543,17 +557,18 @@ else:
     coef_df = add_description_column(coef_df, "feature")
 
     st.caption(
-        "Bigger absolute coefficients typically mean stronger influence (after scaling + one-hot encoding). "
-        "Sign tells direction (up/down)."
+        "Larger absolute coefficients usually indicate stronger influence (after scaling and one-hot encoding). "
+        "The sign indicates direction (up/down). For one-hot features, a positive coefficient means that category "
+        "is associated with higher prices relative to the baseline category."
     )
     st.dataframe(coef_df.head(30), use_container_width=True)
 
-# --- 3.2 OLS p-values (interpretation layer) ---
-st.markdown("### 3.2 OLS refit p-values (interpretation layer)")
-if DEMO_FAST:
-    st.info("Fast demo mode is ON — skipping OLS refit.")
+# 3.2 OLS refit (rename + safer framing)
+st.markdown("### 3.2 Optional: coefficient evidence view (OLS refit)")
+if FAST_VIEW:
+    st.info("Quick view is ON — skipping this section.")
 elif not _HAS_STATSMODELS:
-    st.info("statsmodels is not installed; skipping p-values.")
+    st.info("This build does not include the package needed for OLS refit.")
 else:
     try:
         X_sm = sm.add_constant(X_proc, has_constant="add")
@@ -575,39 +590,36 @@ else:
         ols_df = add_description_column(ols_df, "feature")
 
         st.caption(
-            "This is a separate OLS refit used as an interpretation aid. "
-            "It’s not the deployed model, but helps explain which signals are statistically strong."
+            "This is an interpretation aid (a separate OLS refit), not the deployed model. "
+            "It provides a correlation-style signal of which processed features appear strongest."
         )
         st.dataframe(ols_df.head(30), use_container_width=True)
     except Exception as e:
-        st.warning(f"OLS refit failed: {e}")
+        if DEBUG:
+            st.exception(e)
+        st.info("OLS refit could not be computed in this build.")
 
-# --- 3.3 Permutation importance (final feature space) ---
-st.markdown("### 3.3 Permutation importance (RMSE increase) — final feature space")
-
-if DEMO_FAST:
-    st.info("Fast demo mode is ON — skipping permutation importance.")
+# 3.3 Permutation importance
+st.markdown("### 3.3 Optional: sensitivity test (permutation importance)")
+if FAST_VIEW:
+    st.info("Quick view is ON — skipping this section.")
 elif not _HAS_SKLEARN_EXTRAS:
-    st.info("sklearn extras not available; skipping permutation importance.")
+    st.info("This build does not include the packages needed for permutation importance.")
 else:
     try:
-        # split raw data
         X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.2, random_state=42)
 
-        # baseline RMSE in original price space for human readability
         y_pred_log = ridge_pipe.predict(X_te)
         base_rmse_price = float(np.sqrt(mean_squared_error(y_te, np.expm1(y_pred_log))))
 
         if shared is None or ct is None:
-            st.warning("Could not access Ridge preprocessing steps ('shared' / 'prep'). Skipping permutation importance.")
+            st.info("Permutation importance is not available for this Ridge pipeline in the current build.")
         else:
-            # final feature matrix
             X_shared_te = shared.transform(X_te)
             X_final_te = ct.transform(X_shared_te)
             if hasattr(X_final_te, "toarray"):
                 X_final_te = X_final_te.toarray()
 
-            # aligned names
             names_pi = None
             if hasattr(ct, "get_feature_names_out"):
                 try:
@@ -617,11 +629,10 @@ else:
             if names_pi is None or len(names_pi) != X_final_te.shape[1]:
                 names_pi = [f"f{i}" for i in range(X_final_te.shape[1])]
 
-            # permute on estimator only (expects final numeric matrix)
             perm = permutation_importance(
                 est,
                 X_final_te,
-                np.log1p(y_te),  # estimator trained in log space
+                np.log1p(y_te),
                 n_repeats=8,
                 random_state=42,
                 scoring="neg_root_mean_squared_error",
@@ -630,24 +641,26 @@ else:
             perm_df = pd.DataFrame(
                 {
                     "feature": names_pi,
-                    "rmse_increase": -perm.importances_mean,  # positive means worse when shuffled
+                    "rmse_increase": -perm.importances_mean,
                     "std": perm.importances_std,
                 }
             ).sort_values("rmse_increase", ascending=False)
             perm_df = add_description_column(perm_df, "feature")
 
             st.caption(
-                f"Baseline (rough) error scale on this holdout split: **±${base_rmse_price:,.0f}**. "
-                "Permutation importance shows how much error increases when a feature is randomized."
+                f"Baseline error scale on this split is roughly **±{_format_currency(base_rmse_price)}**. "
+                "Permutation importance estimates how much error increases when a feature is randomized."
             )
             st.dataframe(perm_df.head(30), use_container_width=True)
     except Exception as e:
-        st.warning(f"Permutation importance failed: {e}")
+        if DEBUG:
+            st.exception(e)
+        st.info("Permutation importance could not be computed in this build.")
 
+st.success("Takeaway: Ridge is a readable baseline. Non-linear models typically win by capturing interactions (quality × size, etc.).")
 st.divider()
 
 st.caption(
-    "Tip: This page is designed for mixed audiences. "
-    "Non-technical viewers can focus on the charts + the RMSE intuition card; "
-    "advanced viewers can expand the full evaluation tables."
+    "Recommended reading order: start from the charts (Stage 1/2 + feature importance), "
+    "then expand the detailed tables if you want the full evaluation record."
 )

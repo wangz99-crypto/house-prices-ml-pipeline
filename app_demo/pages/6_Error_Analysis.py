@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-import json
 
 import numpy as np
 import pandas as pd
@@ -10,7 +9,7 @@ import matplotlib.pyplot as plt
 
 from lib.ui_style import hero, section
 
-# ✅ DEMO: use demo registry io
+# Demo registry IO
 from registry_io_demo import (
     RegistryLayout,
     RunRef,
@@ -20,32 +19,34 @@ from registry_io_demo import (
     read_aliases,
 )
 
-# -----------------------------
+# --------------------------------------------------
 # Config
-# -----------------------------
-ALLOWED_MODELS = {"ridge", "xgb", "lgbm"}  # ✅ only these three for demo
+# --------------------------------------------------
+ALLOWED_MODELS = {"ridge", "xgb", "lgbm"}  # demo-safe families
 
 
-# -----------------------------
+# --------------------------------------------------
 # Layout bootstrap
-# -----------------------------
+# --------------------------------------------------
 def _ensure_layout() -> RegistryLayout:
     layout = st.session_state.get("REGISTRY_LAYOUT")
     if layout is None:
-        st.error("Registry layout not initialized. Please open the Demo Home page first (app_demo/app_demo.py).")
+        st.warning("Please start from the Home page to initialize the demo assets.")
+        with st.expander("Why am I seeing this?", expanded=False):
+            st.write(
+                "This page reads precomputed evaluation artifacts (OOF predictions, metrics, and reports). "
+                "The Home page initializes the artifact layout for the session."
+            )
         st.stop()
     return layout
 
 
 def _get_demo_dir(layout: RegistryLayout) -> Path:
     """
-    Robustly find the demo/artifacts root for reports/feature_importance.
-
-    Tries (in order):
-      1) st.session_state["DEMO"] or ["DEMO_DIR"]
-      2) layout.artifacts_dir
-      3) infer from registry_dir (artifacts_demo/registry -> artifacts_demo)
-      4) common relative to this page
+    Resolve the artifacts root that contains:
+      - reports/feature_importance
+      - reports/figures
+      - registry/
     """
     ss = st.session_state
     for k in ("DEMO", "DEMO_DIR", "ARTIFACTS_DEMO", "ARTIFACTS_DIR"):
@@ -67,9 +68,9 @@ def _get_demo_dir(layout: RegistryLayout) -> Path:
     return repo_root / "artifacts_demo"
 
 
-# -----------------------------
+# --------------------------------------------------
 # Utilities
-# -----------------------------
+# --------------------------------------------------
 def _money(x) -> str:
     try:
         return f"${float(x):,.0f}"
@@ -89,12 +90,13 @@ def _mae(y_true, y_pred) -> float:
     return float(np.mean(np.abs(y_pred - y_true)))
 
 
+@st.cache_data(show_spinner=False)
 def _load_train(repo_root: Path) -> pd.DataFrame:
     """
-    ✅ DEMO-first: use a small sample to avoid big file dependency.
+    Demo-friendly data loader: prefers a small reproducible sample.
     Priority:
       1) tests/data/sample_train.csv
-      2) data/raw/train.csv
+      2) data/raw/train.csv (local-only fallback)
     """
     p1 = repo_root / "tests" / "data" / "sample_train.csv"
     p2 = repo_root / "data" / "raw" / "train.csv"
@@ -104,10 +106,14 @@ def _load_train(repo_root: Path) -> pd.DataFrame:
     if p2.exists():
         return pd.read_csv(p2)
 
-    raise FileNotFoundError(f"Missing train data. Tried:\n- {p1}\n- {p2}")
+    raise FileNotFoundError("Training data is not available in this build.")
 
 
 def _detect_log_space(oof: np.ndarray, y_true_price: np.ndarray) -> bool:
+    """
+    Heuristic: in Ames, log1p(SalePrice) tends to be ~10-13.
+    If OOF median is in that band and true prices are large, treat OOF as log-space.
+    """
     o = np.asarray(oof).reshape(-1)
     y = np.asarray(y_true_price).reshape(-1)
 
@@ -117,17 +123,16 @@ def _detect_log_space(oof: np.ndarray, y_true_price: np.ndarray) -> bool:
     o_med = float(np.nanmedian(o))
     y_med = float(np.nanmedian(y))
 
-    # log1p prices: around 10~13
     if 6.0 <= o_med <= 16.0 and y_med > 1000:
         return True
 
     return False
 
 
-def _prepare_error_df(train_df: pd.DataFrame, oof: np.ndarray) -> pd.DataFrame:
+def _prepare_error_df(train_df: pd.DataFrame, oof: np.ndarray) -> tuple[pd.DataFrame, bool]:
     df = train_df.copy()
     if "SalePrice" not in df.columns:
-        raise RuntimeError("train data missing SalePrice")
+        raise RuntimeError("Training data is missing the target column (SalePrice).")
 
     y_true = pd.to_numeric(df["SalePrice"], errors="coerce").to_numpy()
     oof = np.asarray(oof).reshape(-1)
@@ -170,14 +175,7 @@ def _prepare_error_df(train_df: pd.DataFrame, oof: np.ndarray) -> pd.DataFrame:
             + pd.to_numeric(out["2ndFlrSF"], errors="coerce").fillna(0)
         )
 
-    return out
-
-
-def _fmt_pct(x: float) -> str:
-    try:
-        return f"{float(x) * 100:.1f}%"
-    except Exception:
-        return "N/A"
+    return out, is_log
 
 
 def _top_segment(err: pd.DataFrame, seg_col: str) -> dict | None:
@@ -234,9 +232,14 @@ def _load_top_featimp_csv(demo_dir: Path, model_name: str, run_id: str) -> pd.Da
         except Exception:
             return None
 
-    cands = sorted(fi_dir.glob(f"{model_name}__*__top30.csv"), key=lambda p: p.stat().st_mtime, reverse=True)
+    cands = sorted(
+        fi_dir.glob(f"{model_name}__*__top30.csv"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
     if not cands:
         return None
+
     try:
         df = pd.read_csv(cands[0])
         if "importance" in df.columns:
@@ -247,6 +250,7 @@ def _load_top_featimp_csv(demo_dir: Path, model_name: str, run_id: str) -> pd.Da
 
 
 def _build_tiers(err: pd.DataFrame) -> tuple[pd.DataFrame, str | None]:
+    # price tiers
     try:
         err["price_tier"] = pd.qcut(
             pd.to_numeric(err["y_true"], errors="coerce"),
@@ -257,6 +261,7 @@ def _build_tiers(err: pd.DataFrame) -> tuple[pd.DataFrame, str | None]:
     except Exception:
         err["price_tier"] = pd.Series([pd.NA] * len(err))
 
+    # size tiers
     size_col = "TotalSF" if "TotalSF" in err.columns else ("GrLivArea" if "GrLivArea" in err.columns else None)
     if size_col is not None:
         try:
@@ -269,81 +274,143 @@ def _build_tiers(err: pd.DataFrame) -> tuple[pd.DataFrame, str | None]:
         except Exception:
             err["size_tier"] = pd.Series([pd.NA] * len(err))
 
+    # quality tiers
     if "OverallQual" in err.columns:
         oq = pd.to_numeric(err["OverallQual"], errors="coerce")
         try:
-            err["qual_tier"] = pd.cut(oq, bins=[0, 4, 6, 10], labels=["Low (1–4)", "Mid (5–6)", "High (7–10)"])
+            err["qual_tier"] = pd.cut(
+                oq, bins=[0, 4, 6, 10], labels=["Low (1–4)", "Mid (5–6)", "High (7–10)"]
+            )
         except Exception:
             err["qual_tier"] = pd.Series([pd.NA] * len(err))
 
     return err, size_col
 
 
-# -----------------------------
+def _risk_table(err: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    for col in ["price_tier", "size_tier", "qual_tier"]:
+        if col not in err.columns:
+            continue
+        g = (
+            err.groupby(col, observed=True)
+            .agg(
+                n=("abs_error", "size"),
+                mean_abs=("abs_error", "mean"),
+                p90_abs=("abs_error", lambda s: float(pd.Series(s).quantile(0.90))),
+                mean_ape=("ape", "mean"),
+            )
+            .reset_index()
+        )
+        if len(g):
+            g = g.rename(columns={col: "segment"})
+            g.insert(0, "group", col)
+            rows.append(g)
+
+    # Neighborhood (if enough coverage)
+    if "Neighborhood" in err.columns and err["Neighborhood"].notna().mean() > 0.6:
+        g = (
+            err.groupby("Neighborhood", observed=True)
+            .agg(
+                n=("abs_error", "size"),
+                mean_abs=("abs_error", "mean"),
+                p90_abs=("abs_error", lambda s: float(pd.Series(s).quantile(0.90))),
+                mean_ape=("ape", "mean"),
+            )
+            .reset_index()
+        )
+        g = g[g["n"] >= 10].sort_values("mean_abs", ascending=False)
+        if len(g):
+            g = g.rename(columns={"Neighborhood": "segment"})
+            g.insert(0, "group", "Neighborhood")
+            rows.append(g)
+
+    if not rows:
+        return pd.DataFrame(columns=["group", "segment", "n", "mean_abs", "p90_abs", "mean_ape"])
+
+    out = pd.concat(rows, ignore_index=True)
+    out = out.sort_values(["mean_abs", "p90_abs"], ascending=False)
+    return out
+
+
+# --------------------------------------------------
 # Page
-# -----------------------------
+# --------------------------------------------------
 layout = _ensure_layout()
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEMO = _get_demo_dir(layout)
 
-hero("🧯 Error Analysis", "Where does the *best* model miss the most? (OOF, no leakage)")
+hero("🚨 Error Analysis", "Where does the selected model miss the most? (OOF view)")
 
-# --- pick model + alias ---
+st.info(
+    "Demo build note: for fast startup, this page analyzes lightweight model families only "
+    f"({', '.join(sorted(ALLOWED_MODELS))}). Full evaluation across all models is covered elsewhere in the app."
+)
+
+# --- model + alias ---
 model_names_all = list_model_names(layout)
-
-# ✅ filter to only allowed + actually present
-model_names = [m for m in model_names_all if m in ALLOWED_MODELS]
-model_names = sorted(model_names)
+model_names = sorted([m for m in model_names_all if m in ALLOWED_MODELS])
 
 if not model_names:
-    st.warning(f"No allowed model families found. Expected one of: {sorted(ALLOWED_MODELS)}")
+    st.warning("No deployment-friendly model families are available in this build.")
     st.stop()
 
+section("Select a model", "Choose a model family and version to inspect.")
 model_name = st.selectbox("Model family", model_names, index=0)
+
 aliases = read_aliases(layout, model_name)
-alias_key = st.selectbox("Model version", ["best", "latest"], index=0)
+alias_key = st.selectbox("Version", ["best", "latest"], index=0)
 
 ref: RunRef | None = get_alias_runref(aliases, alias_key, default_model_name=model_name)
 if ref is None:
-    st.warning("Alias not set for this model family.")
+    st.info("This version label is not set for the selected model yet.")
     st.stop()
 
 bundle = load_run_bundle(layout, ref)
 run_dir = Path(bundle["run_dir"])
 
-# --- load OOF ---
+# --- OOF ---
 oof_path = run_dir / "oof.npy"
 if not oof_path.exists():
-    st.error(f"Missing OOF file: {oof_path}")
+    st.warning("This build does not include OOF predictions for the selected run.")
+    with st.expander("Details (optional)", expanded=False):
+        st.write("Expected file:", str(oof_path))
     st.stop()
 
 oof = np.load(oof_path)
 
-# --- load train + build error df ---
+# --- train + error df ---
 try:
     train_df = _load_train(REPO_ROOT)
-    err = _prepare_error_df(train_df, oof)
+    err, was_log = _prepare_error_df(train_df, oof)
 except Exception as e:
-    st.error(f"Failed to build error table: {e}")
+    st.warning("Error analysis data is not available in this build.")
+    with st.expander("Details (optional)", expanded=False):
+        st.write(str(e))
     st.stop()
 
 err, size_col = _build_tiers(err)
 
-# -----------------------------
-# 1) Explain
-# -----------------------------
-section("What this page shows", "OOF errors are a realistic proxy for performance on new data.", "🧾")
+# --------------------------------------------------
+# 1) Explanation
+# --------------------------------------------------
+section("What this page shows", "OOF errors are a realistic proxy for performance on new data.")
 st.markdown(
     """
-- **Out-of-Fold (OOF)**: each row is predicted by a model that **did not train on that row**
-- This reduces “self-scoring” and gives a more honest view of error patterns
-- Goal: show **where the model is reliable vs risky**, not only a single score
+- **Out-of-Fold (OOF):** each home is predicted by a model that **did not train on that home**  
+- This reduces “self-scoring” and provides a more honest view of model behavior  
+- The goal is to highlight **where the model is reliable vs. risky**, not only a single score
 """.strip()
 )
 
-# -----------------------------
+if was_log:
+    st.caption("Scale note: OOF predictions appear to be stored in **log-space** and are converted back to **dollars** on this page.")
+else:
+    st.caption("Scale note: OOF predictions appear to be stored in **dollar scale** on this page.")
+
+# --------------------------------------------------
 # 2) KPIs
-# -----------------------------
+# --------------------------------------------------
 rmse = _rmse(err["y_true"], err["y_pred"])
 mae = _mae(err["y_true"], err["y_pred"])
 p90 = float(err["abs_error"].quantile(0.90))
@@ -354,26 +421,27 @@ c1.metric("OOF RMSE", _money(rmse))
 c2.metric("OOF MAE", _money(mae))
 c3.metric("90th % abs error", _money(p90))
 c4.metric("95th % abs error", _money(p95))
-st.caption("MAE ≈ typical miss. 90/95% show how bad large misses can get.")
+st.caption("MAE ≈ typical miss. 90/95% highlight the scale of large misses.")
 
 st.divider()
 
-# =============================
-# Risk Flags
-# =============================
-section("Risk flags (automatic)", "Plain-language summary: where the model is most risky.", "⚠️")
+# --------------------------------------------------
+# 3) Risk flags
+# --------------------------------------------------
+section("Risk flags", "Plain-language summary of where this model is most risky.", "⚠️")
 
 risk_items = []
 r = _top_segment(err, "price_tier")
 if r:
-    risk_items.append(("Price tier", r["price_tier"], r["n"], r["mean_abs"], r["p90_abs"], r["mean_ape"]))
+    risk_items.append(("Price tier", r["price_tier"], r["n"], r["mean_abs"], r["p90_abs"]))
 r = _top_segment(err, "size_tier")
 if r:
-    risk_items.append(("Size tier", r["size_tier"], r["n"], r["mean_abs"], r["p90_abs"], r["mean_ape"]))
+    risk_items.append(("Size tier", r["size_tier"], r["n"], r["mean_abs"], r["p90_abs"]))
 r = _top_segment(err, "qual_tier")
 if r:
-    risk_items.append(("Quality tier", r["qual_tier"], r["n"], r["mean_abs"], r["p90_abs"], r["mean_ape"]))
+    risk_items.append(("Quality tier", r["qual_tier"], r["n"], r["mean_abs"], r["p90_abs"]))
 
+# Neighborhood risk (only if meaningful coverage)
 if "Neighborhood" in err.columns and err["Neighborhood"].notna().mean() > 0.6:
     g = (
         err.groupby("Neighborhood", observed=True)
@@ -384,48 +452,62 @@ if "Neighborhood" in err.columns and err["Neighborhood"].notna().mean() > 0.6:
         )
         .reset_index()
     )
-    g = g[g["n"] >= 10].sort_values("mean_abs", ascending=False)  # ✅ relaxed for sample data
+    g = g[g["n"] >= 10].sort_values("mean_abs", ascending=False)
     if len(g) > 0:
         row = g.iloc[0]
-        risk_items.append(("Neighborhood (>=10 homes)", row["Neighborhood"], int(row["n"]), float(row["mean_abs"]), float(row["p90_abs"]), np.nan))
+        risk_items.append(("Neighborhood", row["Neighborhood"], int(row["n"]), float(row["mean_abs"]), float(row["p90_abs"])))
 
 if not risk_items:
-    st.info("Not enough segment columns found to produce risk flags.")
+    st.info("Not enough segment information is available to generate risk flags.")
 else:
     cards = st.columns(min(3, len(risk_items)))
-    for i, (group, seg, n, mean_abs, p90_abs, _mean_ape) in enumerate(risk_items[:3]):
+    for i, (group, seg, n, mean_abs, p90_abs) in enumerate(risk_items[:3]):
         with cards[i]:
-            st.metric(f"{group} most risky", str(seg))
+            st.metric(f"Highest-risk {group}", str(seg))
             st.caption(f"avg miss ≈ {_money(mean_abs)} • 90% ≤ {_money(p90_abs)} • n={int(n)}")
+
+    with st.expander("Show all segments (details)", expanded=False):
+        rt = _risk_table(err).copy()
+        if not rt.empty:
+            rt["mean_abs"] = rt["mean_abs"].map(_money)
+            rt["p90_abs"] = rt["p90_abs"].map(_money)
+            rt["mean_ape"] = (rt["mean_ape"] * 100).round(2).astype(str) + "%"
+        st.dataframe(rt, use_container_width=True)
 
 st.markdown("---")
 
-# =============================
-# Why it happens
-# =============================
-section("Why these misses happen", "Link error patterns to model-relevant signals.", "🧠")
+# --------------------------------------------------
+# 4) Why it happens
+# --------------------------------------------------
+section("Why these misses happen", "Connect error patterns to model-relevant signals.", "🧠")
 
-num_candidates = [c for c in ["GrLivArea", "TotalSF", "OverallQual", "OverallCond", "YearBuilt", "YrSold", "TotalBsmtSF"] if c in err.columns]
+num_candidates = [
+    c for c in ["GrLivArea", "TotalSF", "OverallQual", "OverallCond", "YearBuilt", "YrSold", "TotalBsmtSF"]
+    if c in err.columns
+]
 corr_df = _spearman_insights(err, num_candidates, topk=6)
 
 colL, colR = st.columns([1, 1], gap="large")
 
 with colL:
-    st.markdown("**Which factors relate most to large errors?**")
+    st.markdown("**Which factors are associated with larger errors?**")
     if corr_df.empty:
-        st.info("Not enough numeric fields to compute correlations.")
+        st.info("Not enough numeric fields are available to compute correlations.")
     else:
         show = corr_df.copy()
-        show["Direction"] = np.where(show["spearman_abs_error"] >= 0, "↑ larger value → larger error", "↓ larger value → larger error")
+        show["Interpretation"] = np.where(
+            show["spearman_abs_error"] >= 0,
+            "Higher values tend to align with larger errors",
+            "Lower values tend to align with larger errors",
+        )
         show["spearman_abs_error"] = show["spearman_abs_error"].round(3)
-        st.dataframe(show[["feature", "spearman_abs_error", "Direction", "n"]], use_container_width=True)
+        st.dataframe(show[["feature", "spearman_abs_error", "Interpretation", "n"]], use_container_width=True)
 
 with colR:
-    st.markdown("**What the model relies on (top features, if available)**")
+    st.markdown("**What the model relies on (top features)**")
     fi_df = _load_top_featimp_csv(DEMO, model_name, ref.run_id)
     if fi_df is None or fi_df.empty or "feature" not in fi_df.columns:
-        st.info("No feature importance CSV found for this model in demo reports.")
-        st.caption(f"Looked under: {DEMO / 'reports' / 'feature_importance'}")
+        st.info("Feature importance is not available for this run in the demo reports.")
     else:
         topk = min(12, len(fi_df))
         show = fi_df.sort_values("importance", ascending=False).head(topk).copy()
@@ -435,9 +517,9 @@ with colR:
 
 st.divider()
 
-# -----------------------------
-# Overall behavior charts
-# -----------------------------
+# --------------------------------------------------
+# 5) Overall behavior charts
+# --------------------------------------------------
 section("Overall behavior", "Does the model track reality, and how are errors distributed?", "📈")
 
 colA, colB = st.columns(2, gap="large")
@@ -457,7 +539,7 @@ with colA:
 with colB:
     fig, ax = plt.subplots()
     ax.hist(err["error"], bins=60)
-    ax.set_title("Residual distribution (Pred - Actual)")
+    ax.set_title("Residual distribution (Pred − Actual)")
     ax.set_xlabel("Error ($)")
     ax.set_ylabel("Count")
     st.pyplot(fig)
@@ -465,15 +547,18 @@ with colB:
 
 st.divider()
 
-# -----------------------------
-# Segment breakdown
-# -----------------------------
+# --------------------------------------------------
+# 6) Segment breakdown
+# --------------------------------------------------
 section("Where it struggles", "Error by price tier, size tier, and quality tier.", "🔍")
+
 
 def segment_table(col: str) -> pd.DataFrame:
     g = err.groupby(col, observed=True)["abs_error"].agg(["count", "mean", "median"]).reset_index()
     g = g.rename(columns={"mean": "mean_abs_error", "median": "median_abs_error"})
+    g = g.sort_values("mean_abs_error", ascending=False)
     return g
+
 
 def segment_bar(g: pd.DataFrame, col: str, title: str):
     fig, ax = plt.subplots()
@@ -481,13 +566,19 @@ def segment_bar(g: pd.DataFrame, col: str, title: str):
     ax.set_title(title)
     ax.set_ylabel("Mean absolute error ($)")
     ax.set_xlabel("")
+    # Optional labels (safe across matplotlib versions)
+    try:
+        ax.bar_label(ax.containers[0], fmt="%.0f", padding=2)
+    except Exception:
+        pass
     return fig
+
 
 a, b, c = st.columns(3, gap="large")
 
 with a:
     if "price_tier" not in err.columns:
-        st.info("price_tier not available.")
+        st.info("Price tiers are not available.")
     else:
         g = segment_table("price_tier")
         fig = segment_bar(g, "price_tier", "Error by price tier")
@@ -497,7 +588,7 @@ with a:
 
 with b:
     if "size_tier" not in err.columns or size_col is None:
-        st.info("No TotalSF/GrLivArea available for size tiers.")
+        st.info("Size tiers are not available.")
     else:
         g = segment_table("size_tier")
         fig = segment_bar(g, "size_tier", f"Error by size tier ({size_col})")
@@ -507,7 +598,7 @@ with b:
 
 with c:
     if "qual_tier" not in err.columns:
-        st.info("No OverallQual available for quality tiers.")
+        st.info("Quality tiers are not available.")
     else:
         g = segment_table("qual_tier")
         fig = segment_bar(g, "qual_tier", "Error by quality tier (OverallQual)")
@@ -517,10 +608,10 @@ with c:
 
 st.divider()
 
-# -----------------------------
-# Worst cases
-# -----------------------------
-section("Hardest cases", "Which homes were the biggest misses?", "🚨")
+# --------------------------------------------------
+# 7) Worst cases
+# --------------------------------------------------
+section("Hardest cases", "The largest misses — useful for boundary thinking and future improvements.", "🚩")
 
 topn = st.slider("Show top N worst cases", 10, 100, 20, step=10)
 cols_show = [c for c in ["Neighborhood", "OverallQual", "OverallCond", "GrLivArea", "TotalSF", "YearBuilt", "YrSold"] if c in err.columns]
@@ -534,10 +625,7 @@ worst["Error%"] = (worst["ape"] * 100).round(1).astype(str) + "%"
 st.dataframe(worst[["Actual", "Predicted", "AbsError", "Error%"] + cols_show], use_container_width=True)
 
 with st.expander("Technical details (optional)", expanded=False):
-    st.write("Model family:", model_name)
-    st.write("Alias:", alias_key)
-    st.write("Run used:", ref.run_id)
-    st.write("Run dir:", str(run_dir))
-    st.write("OOF file:", str(oof_path))
-    st.write("Demo dir:", str(DEMO))
-    st.write("Rows:", len(err))
+    st.write("Model:", model_name)
+    st.write("Version:", alias_key)
+    st.write("Run:", ref.run_id)
+    st.write("Rows analyzed:", len(err))
