@@ -22,12 +22,11 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest
+          pip install -r requirements-train.txt
 
       - name: Syntax check
         run: |
-          python -m compileall src
+          python -m compileall src app app_demo
 
       - name: Run unit tests
         run: |
